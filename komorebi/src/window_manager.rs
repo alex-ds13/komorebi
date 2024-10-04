@@ -829,6 +829,11 @@ impl WindowManager {
             if self.focused_workspace()?.containers().is_empty() {
                 let desktop_window = Window::from(WindowsApi::desktop_window()?);
 
+                if self.mouse_follows_focus {
+                    let rect = self.focused_monitor_size()?;
+                    WindowsApi::center_cursor_in_rect(&rect)?;
+                }
+
                 match WindowsApi::raise_and_focus_window(desktop_window.hwnd) {
                     Ok(()) => {}
                     Err(error) => {
