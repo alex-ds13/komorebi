@@ -406,24 +406,23 @@ impl WindowManager {
                 }
             }
             WindowManagerEvent::MoveResizeStart(_, window) => {
-                if *self.focused_workspace()?.tile() {
-                    let monitor_idx = self.focused_monitor_idx();
-                    let workspace_idx = self
-                        .focused_monitor()
-                        .ok_or_else(|| anyhow!("there is no monitor with this idx"))?
-                        .focused_workspace_idx();
-                    let container_idx = self
-                        .focused_monitor()
-                        .ok_or_else(|| anyhow!("there is no monitor with this idx"))?
-                        .focused_workspace()
-                        .ok_or_else(|| anyhow!("there is no workspace with this idx"))?
-                        .focused_container_idx();
+                // if *self.focused_workspace()?.tile() {
+                let monitor_idx = self.focused_monitor_idx();
+                let workspace_idx = self
+                    .focused_monitor()
+                    .ok_or_else(|| anyhow!("there is no monitor with this idx"))?
+                    .focused_workspace_idx();
+                // let container_idx = self
+                //     .focused_monitor()
+                //     .ok_or_else(|| anyhow!("there is no monitor with this idx"))?
+                //     .focused_workspace()
+                //     .ok_or_else(|| anyhow!("there is no workspace with this idx"))?
+                //     .focused_container_idx();
 
-                    WindowsApi::bring_window_to_top(window.hwnd)?;
+                WindowsApi::bring_window_to_top(window.hwnd)?;
 
-                    self.pending_move_op =
-                        Option::from((monitor_idx, workspace_idx, container_idx));
-                }
+                self.pending_move_op = Option::from((monitor_idx, workspace_idx, window.hwnd));
+                // }
             }
             WindowManagerEvent::MoveResizeEnd(_, window) => {
                 // We need this because if the event ends on a different monitor,
@@ -431,6 +430,19 @@ impl WindowManager {
                 let pending = self.pending_move_op;
                 // Always consume the pending move op whenever this event is handled
                 self.pending_move_op = None;
+
+                // If the window handles don't match then something went wrong and the pending move
+                // is not related to this current move, if so abort this operation.
+                if let Some((_, _, w_hwnd)) = pending {
+                    if w_hwnd != window.hwnd {
+                        self.pending_move_op = None;
+                        color_eyre::eyre::bail!(
+                            "window handles for move operation don't match: {} != {}",
+                            w_hwnd,
+                            window.hwnd
+                        );
+                    }
+                }
 
                 let target_monitor_idx = self
                     .monitor_idx_from_current_pos()
@@ -477,7 +489,7 @@ impl WindowManager {
                                 .ok_or_else(|| anyhow!("cannot get workspace idx"))?;
 
                             let managed_window =
-                                origin_workspace.contains_managed_window(window.hwnd);
+                                origin_workspace.contains_window(window.hwnd);
 
                             if !managed_window {
                                 moved_across_monitors = false;
@@ -507,11 +519,8 @@ impl WindowManager {
                         tracing::info!("moving with mouse");
 
                         if moved_across_monitors {
-                            if let Some((
-                                origin_monitor_idx,
-                                origin_workspace_idx,
-                                origin_container_idx,
-                            )) = pending
+                            if let Some((origin_monitor_idx, origin_workspace_idx, w_hwnd)) =
+                                pending
                             {
                                 let target_workspace_idx = self
                                     .monitors()
@@ -531,18 +540,84 @@ impl WindowManager {
                                     // Default to 0 in the case of an empty workspace
                                     .unwrap_or(0);
 
-                                self.transfer_container(
-                                    (
-                                        origin_monitor_idx,
-                                        origin_workspace_idx,
-                                        origin_container_idx,
-                                    ),
-                                    (
-                                        target_monitor_idx,
-                                        target_workspace_idx,
-                                        target_container_idx,
-                                    ),
-                                )?;
+                                let origin_workspace = self
+                                    .monitors_mut()
+                                    .get_mut(origin_monitor_idx)
+                                    .ok_or_else(|| anyhow!("cannot get monitor idx"))?
+                                    .workspaces_mut()
+                                    .get_mut(origin_workspace_idx)
+                                    .ok_or_else(|| anyhow!("cannot get workspace idx"))?;
+
+                                let origin_container_idx = origin_workspace
+                                    .container_for_window(w_hwnd)
+                                    .and_then(|c| {
+                                        origin_workspace.containers().iter().position(|cc| cc == c)
+                                    });
+
+                                if let Some(origin_container_idx) = origin_container_idx {
+                                    // Moving normal container window
+                                    self.transfer_container(
+                                        (
+                                            origin_monitor_idx,
+                                            origin_workspace_idx,
+                                            origin_container_idx,
+                                        ),
+                                        (
+                                            target_monitor_idx,
+                                            target_workspace_idx,
+                                            target_container_idx,
+                                        ),
+                                    )?;
+                                } else if let Some(idx) = origin_workspace
+                                    .floating_windows()
+                                    .iter()
+                                    .position(|w| w.hwnd == w_hwnd)
+                                {
+                                    // Moving floating window
+                                    let mut floating_window =
+                                        origin_workspace.floating_windows_mut().remove(idx);
+                                    let origin_area = self
+                                        .monitors()
+                                        .get(origin_monitor_idx)
+                                        .ok_or_else(|| {
+                                            anyhow!("there is no monitor at this idx")
+                                        })?
+                                        .work_area_size();
+                                    let target_area = self
+                                        .monitors()
+                                        .get(target_monitor_idx)
+                                        .ok_or_else(|| {
+                                            anyhow!("there is no monitor at this idx")
+                                        })?
+                                        .work_area_size();
+
+                                    let _ =
+                                        floating_window.move_to_area(origin_area, target_area);
+
+                                    let target_workspace = self
+                                        .monitors_mut()
+                                        .get_mut(target_monitor_idx)
+                                        .ok_or_else(|| anyhow!("there is no monitor at this idx"))?
+                                        .focused_workspace_mut()
+                                        .ok_or_else(|| {
+                                            anyhow!("there is no focused workspace for this monitor")
+                                        })?;
+                                    target_workspace.floating_windows_mut().push(floating_window);
+                                } else if origin_workspace
+                                    .monocle_container()
+                                    .as_ref()
+                                    .and_then(|monocle| monocle.focused_window().map(|w| w.hwnd == w_hwnd))
+                                    .unwrap_or_default()
+                                {
+                                    //TODO: Moving monocle container
+                                } else if origin_workspace
+                                    .maximized_window()
+                                    .as_ref()
+                                    .map(|max| max.hwnd == w_hwnd)
+                                    .unwrap_or_default()
+                                {
+                                    //TODO: Moving maximized_window
+                                }
 
                                 // We want to make sure both the origin and target monitors are updated,
                                 // so that we don't have ghost tiles until we force an interaction on

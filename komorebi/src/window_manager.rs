@@ -102,7 +102,7 @@ pub struct WindowManager {
     pub hotwatch: Hotwatch,
     pub virtual_desktop_id: Option<Vec<u8>>,
     pub has_pending_raise_op: bool,
-    pub pending_move_op: Option<(usize, usize, usize)>,
+    pub pending_move_op: Option<(usize, usize, isize)>,
     pub already_moved_window_handles: Arc<Mutex<HashSet<isize>>>,
 }
 
