@@ -103,6 +103,7 @@ pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
     std::thread::spawn(move || loop {
         let wm = wm.clone();
 
+        println!("######################### Spawning new command listening thread....");
         let _ = std::thread::spawn(move || {
             let listener = wm
                 .lock()
@@ -110,10 +111,19 @@ pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
                 .try_clone()
                 .expect("could not clone unix listener");
 
+            println!(
+                "######################### Is WM Locked? {}",
+                if wm.is_locked() { "YES" } else { "NO" }
+            );
             tracing::info!("listening on komorebi.sock");
-            for client in listener.incoming() {
+            for (i, client) in listener.incoming().enumerate() {
                 match client {
                     Ok(stream) => {
+                        println!(
+                            "######################### Reading Command #{} (Locked? {})",
+                            i,
+                            if wm.is_locked() { "YES" } else { "NO" }
+                        );
                         let wm_clone = wm.clone();
                         std::thread::spawn(move || {
                             match stream.set_read_timeout(Some(Duration::from_secs(1))) {
@@ -124,10 +134,13 @@ pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
                                 Ok(()) => {}
                                 Err(error) => tracing::error!("{}", error),
                             }
+                            println!("######################### Finished reading");
                         });
                     }
                     Err(error) => {
                         tracing::error!("{}", error);
+                        println!("######################### Command thread failed: {}", error);
+                        println!("######################### Should Spawn new thread....");
                         break;
                     }
                 }
@@ -1699,8 +1712,10 @@ impl WindowManager {
                 theme_manager::send_notification(theme);
             }
             // Deprecated commands
-            SocketMessage::AltFocusHack(_)
-            | SocketMessage::IdentifyBorderOverflowApplication(_, _) => {}
+            SocketMessage::AltFocusHack(_) => {
+                reply.write_all("Going to sleep...".as_bytes())?;
+            }
+            SocketMessage::IdentifyBorderOverflowApplication(_, _) => {}
         };
 
         notify_subscribers(
@@ -1726,9 +1741,22 @@ pub fn read_commands_uds(wm: &Arc<Mutex<WindowManager>>, mut stream: UnixStream)
     // replies there is no clearly defined protocol for framing yet - it's
     // perhaps whole-json objects for now, but termination is signalled by
     // socket shutdown.
+    println!(
+        "######################### Getting lines from reader: {:#?}",
+        &reader
+    );
+    println!(
+        "######################### Getting lines from stream: {:#?}",
+        &stream
+    );
     for line in reader.lines() {
+        println!("######################### Got line: {:#?}", &line);
         let message = SocketMessage::from_str(&line?)?;
 
+        println!(
+            "######################### Reading Command {}: trying to lock WM",
+            message
+        );
         match wm.try_lock_for(Duration::from_secs(1)) {
             None => {
                 tracing::warn!(
@@ -1736,6 +1764,10 @@ pub fn read_commands_uds(wm: &Arc<Mutex<WindowManager>>, mut stream: UnixStream)
                 );
             }
             Some(mut wm) => {
+                println!(
+                    "######################### Reading Command {}: lock acquired",
+                    message
+                );
                 if wm.is_paused {
                     return match message {
                         SocketMessage::TogglePause

@@ -67,6 +67,16 @@ pub fn send_message(message: &SocketMessage) -> std::io::Result<()> {
     stream.set_write_timeout(Some(Duration::from_secs(1)))?;
     stream.write_all(serde_json::to_string(message)?.as_bytes())
 }
+pub fn send_double_message(message: &SocketMessage) -> std::io::Result<()> {
+    let socket = DATA_DIR.join(KOMOREBI);
+    let mut stream = UnixStream::connect(socket)?;
+    let mut msg = serde_json::to_string(message)?;
+    let msg_c = msg.clone();
+    msg.push('\n');
+    msg.push_str(&msg_c);
+    let bytes = msg.as_bytes();
+    stream.write_all(bytes)
+}
 
 pub fn send_query(message: &SocketMessage) -> std::io::Result<String> {
     let socket = DATA_DIR.join(KOMOREBI);
@@ -84,6 +94,38 @@ pub fn send_query(message: &SocketMessage) -> std::io::Result<String> {
     Ok(response)
 }
 
+pub fn read() -> std::io::Result<String> {
+    let socket = DATA_DIR.join(KOMOREBI);
+
+    let mut stream = UnixStream::connect(socket)?;
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_to_string(&mut response)?;
+
+    Ok(response)
+}
+
+pub fn send_double_query(message: &SocketMessage) -> std::io::Result<String> {
+    let socket = DATA_DIR.join(KOMOREBI);
+
+    let mut stream = UnixStream::connect(socket)?;
+    let mut msg = serde_json::to_string(message)?;
+    let msg_c = msg.clone();
+    let msg_cc = msg.clone();
+    msg.push('\n');
+    msg.push_str(&msg_c);
+    msg.push('\n');
+    msg.push_str(&msg_cc);
+    let bytes = msg.as_bytes();
+    stream.write_all(bytes)?;
+    stream.shutdown(Shutdown::Write)?;
+
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_to_string(&mut response)?;
+
+    Ok(response)
+}
 pub fn subscribe(name: &str) -> std::io::Result<UnixListener> {
     let socket = DATA_DIR.join(name);
 

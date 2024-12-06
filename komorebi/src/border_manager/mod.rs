@@ -29,6 +29,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use strum::Display;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::System::Threading::GetCurrentThread;
 use windows::Win32::System::Threading::SetThreadPriority;
@@ -626,7 +627,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
     Ok(())
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Copy, Clone, Display, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub enum ZOrder {
     Top,
     NoTopMost,
