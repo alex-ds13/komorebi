@@ -1685,8 +1685,10 @@ impl WindowManager {
                 theme_manager::send_notification(theme);
             }
             // Deprecated commands
-            SocketMessage::AltFocusHack(_)
-            | SocketMessage::IdentifyBorderOverflowApplication(_, _) => {}
+            SocketMessage::AltFocusHack(_) => {
+                reply.write_all("Going to sleep...".as_bytes())?;
+            }
+            SocketMessage::IdentifyBorderOverflowApplication(_, _) => {}
         };
 
         notify_subscribers(

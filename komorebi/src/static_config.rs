@@ -95,7 +95,7 @@ use std::sync::Arc;
 use uds_windows::UnixListener;
 use uds_windows::UnixStream;
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct BorderColours {
     /// Border colour when the container contains a single window
     pub single: Option<Colour>,
@@ -236,7 +236,7 @@ impl From<&Monitor> for MonitorConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 /// The `komorebi.json` static configuration file reference for `v0.1.32`
 pub struct StaticConfig {
     /// DEPRECATED from v0.1.22: no longer required
@@ -375,7 +375,7 @@ pub struct StaticConfig {
     pub bar_configurations: Option<Vec<PathBuf>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AnimationsConfig {
     /// Enable or disable animations (default: false)
     enabled: PerAnimationPrefixConfig<bool>,
@@ -518,23 +518,23 @@ impl StaticConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TabsConfig {
     /// Width of a stackbar tab
-    width: Option<i32>,
+    pub width: Option<i32>,
     /// Focused tab text colour
-    focused_text: Option<Colour>,
+    pub focused_text: Option<Colour>,
     /// Unfocused tab text colour
-    unfocused_text: Option<Colour>,
+    pub unfocused_text: Option<Colour>,
     /// Tab background colour
-    background: Option<Colour>,
+    pub background: Option<Colour>,
     /// Font family
-    font_family: Option<String>,
+    pub font_family: Option<String>,
     /// Font size
-    font_size: Option<i32>,
+    pub font_size: Option<i32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StackbarConfig {
     /// Stackbar height
     pub height: Option<i32>,
