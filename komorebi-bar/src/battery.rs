@@ -2,6 +2,7 @@ use crate::config::LabelPrefix;
 use crate::render::RenderConfig;
 use crate::widget::BarWidget;
 use eframe::egui::text::LayoutJob;
+use eframe::egui::Align;
 use eframe::egui::Context;
 use eframe::egui::FontId;
 use eframe::egui::Label;
@@ -105,12 +106,14 @@ impl BarWidget for Battery {
                     BatteryState::Discharging => egui_phosphor::regular::BATTERY_FULL,
                 };
 
-                let font_id = ctx
+                let mut font_id = ctx
                     .style()
                     .text_styles
                     .get(&TextStyle::Body)
                     .cloned()
                     .unwrap_or_else(FontId::default);
+
+                font_id.size *= 1.5;
 
                 let mut layout_job = LayoutJob::simple(
                     match self.label_prefix {
@@ -121,11 +124,17 @@ impl BarWidget for Battery {
                     ctx.style().visuals.selection.stroke.color,
                     100.0,
                 );
+                layout_job.sections[0].format.valign = Align::Center;
+
+                font_id.size /= 1.5;
+
+                let mut text_format = TextFormat::simple(font_id, ctx.style().visuals.text_color());
+                text_format.valign = Align::Center;
 
                 layout_job.append(
                     &output,
                     10.0,
-                    TextFormat::simple(font_id, ctx.style().visuals.text_color()),
+                    text_format,
                 );
 
                 config.apply_on_widget(true, ui, |ui| {

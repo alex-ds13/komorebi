@@ -144,9 +144,16 @@ pub struct Komorebi {
 impl BarWidget for Komorebi {
     fn render(&mut self, ctx: &Context, ui: &mut Ui, config: &mut RenderConfig) {
         let mut komorebi_notification_state = self.komorebi_notification_state.borrow_mut();
+        let font_id = ctx
+            .style()
+            .text_styles
+            .get(&TextStyle::Body)
+            .cloned()
+            .unwrap_or_else(FontId::default);
+
         let icon_size = Vec2 {
-            x: config.font_size,
-            y: config.font_size,
+            x: font_id.size * 1.5,
+            y: font_id.size * 1.5,
         };
 
         if let Some(workspaces) = self.workspaces {

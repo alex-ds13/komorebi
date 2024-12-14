@@ -3,6 +3,7 @@ use crate::render::RenderConfig;
 use crate::selected_frame::SelectableFrame;
 use crate::widget::BarWidget;
 use eframe::egui::text::LayoutJob;
+use eframe::egui::Align;
 use eframe::egui::Context;
 use eframe::egui::FontId;
 use eframe::egui::Label;
@@ -90,12 +91,14 @@ impl BarWidget for Date {
         if self.enable {
             let mut output = self.output();
             if !output.is_empty() {
-                let font_id = ctx
+                let mut font_id = ctx
                     .style()
                     .text_styles
                     .get(&TextStyle::Body)
                     .cloned()
                     .unwrap_or_else(FontId::default);
+
+                font_id.size *= 1.5;
 
                 let mut layout_job = LayoutJob::simple(
                     match self.label_prefix {
@@ -108,15 +111,21 @@ impl BarWidget for Date {
                     ctx.style().visuals.selection.stroke.color,
                     100.0,
                 );
+                layout_job.sections[0].format.valign = Align::Center;
+
+                font_id.size /= 1.5;
 
                 if let LabelPrefix::Text | LabelPrefix::IconAndText = self.label_prefix {
                     output.insert_str(0, "DATE: ");
                 }
 
+                let mut text_format = TextFormat::simple(font_id, ctx.style().visuals.text_color());
+                text_format.valign = Align::Center;
+
                 layout_job.append(
                     &output,
                     10.0,
-                    TextFormat::simple(font_id, ctx.style().visuals.text_color()),
+                    text_format,
                 );
 
                 config.apply_on_widget(false, ui, |ui| {
