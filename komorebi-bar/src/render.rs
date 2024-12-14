@@ -45,14 +45,16 @@ pub struct RenderConfig {
     pub more_inner_margin: bool,
     /// Set to true after the first time the apply_on_widget was called on an alignment
     pub applied_on_widget: bool,
+    /// Font size
+    pub font_size: f32,
 }
 
 pub trait RenderExt {
-    fn new_renderconfig(&self, background_color: Color32) -> RenderConfig;
+    fn new_renderconfig(&self, background_color: Color32, font_size: Option<f32>) -> RenderConfig;
 }
 
 impl RenderExt for &KomobarConfig {
-    fn new_renderconfig(&self, background_color: Color32) -> RenderConfig {
+    fn new_renderconfig(&self, background_color: Color32, font_size: Option<f32>) -> RenderConfig {
         RenderConfig {
             monitor_idx: self.monitor.index,
             spacing: self.widget_spacing.unwrap_or(10.0),
@@ -61,6 +63,7 @@ impl RenderExt for &KomobarConfig {
             alignment: None,
             more_inner_margin: false,
             applied_on_widget: false,
+            font_size: font_size.unwrap_or(12.5),
         }
     }
 }
@@ -83,6 +86,7 @@ impl RenderConfig {
             alignment: None,
             more_inner_margin: false,
             applied_on_widget: false,
+            font_size: 12.5,
         }
     }
 
