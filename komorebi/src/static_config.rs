@@ -95,7 +95,7 @@ use std::sync::Arc;
 use uds_windows::UnixListener;
 use uds_windows::UnixStream;
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct BorderColours {
     /// Border colour when the container contains a single window
     pub single: Option<Colour>,
@@ -109,7 +109,7 @@ pub struct BorderColours {
     pub unfocused: Option<Colour>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct WorkspaceConfig {
     /// Name
     pub name: String,
@@ -205,7 +205,7 @@ impl From<&Workspace> for WorkspaceConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct MonitorConfig {
     /// Workspace configurations
     pub workspaces: Vec<WorkspaceConfig>,
@@ -236,7 +236,7 @@ impl From<&Monitor> for MonitorConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 /// The `komorebi.json` static configuration file reference for `v0.1.32`
 pub struct StaticConfig {
     /// DEPRECATED from v0.1.22: no longer required
@@ -375,7 +375,7 @@ pub struct StaticConfig {
     pub bar_configurations: Option<Vec<PathBuf>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct AnimationsConfig {
     /// Enable or disable animations (default: false)
     pub enabled: PerAnimationPrefixConfig<bool>,
@@ -386,7 +386,7 @@ pub struct AnimationsConfig {
     /// Set the animation FPS (default: 60)
     pub fps: Option<u64>,
 }
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "palette")]
 pub enum KomorebiTheme {
     /// A theme from catppuccin-egui
@@ -518,7 +518,7 @@ impl StaticConfig {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct TabsConfig {
     /// Width of a stackbar tab
     pub width: Option<i32>,
@@ -534,7 +534,7 @@ pub struct TabsConfig {
     pub font_size: Option<i32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct StackbarConfig {
     /// Stackbar height
     pub height: Option<i32>,
