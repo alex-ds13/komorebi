@@ -6,7 +6,10 @@ use crate::animation::ANIMATION_ENABLED_PER_ANIMATION;
 use crate::animation::ANIMATION_FPS;
 use crate::animation::ANIMATION_STYLE_GLOBAL;
 use crate::animation::ANIMATION_STYLE_PER_ANIMATION;
+use crate::animation::DEFAULT_ANIMATION_DURATION;
+use crate::animation::DEFAULT_ANIMATION_ENABLED;
 use crate::animation::DEFAULT_ANIMATION_FPS;
+use crate::animation::DEFAULT_ANIMATION_STYLE;
 use crate::border_manager;
 use crate::border_manager::ZOrder;
 use crate::border_manager::IMPLEMENTATION;
@@ -37,6 +40,7 @@ use crate::windows_api::WindowsApi;
 use crate::workspace::Workspace;
 use crate::Axis;
 use crate::CrossBoundaryBehaviour;
+use crate::Rgb;
 use crate::DATA_DIR;
 use crate::DEFAULT_CONTAINER_PADDING;
 use crate::DEFAULT_WORKSPACE_PADDING;
@@ -644,6 +648,10 @@ impl From<&WindowManager> for StaticConfig {
 impl StaticConfig {
     #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn apply_globals(&mut self) -> Result<()> {
+        // Start by setting the default values so that we can change only the ones the user has
+        // changed on it's config and revert all others to default.
+        set_defaults();
+
         if let Some(monitor_index_preferences) = &self.monitor_index_preferences {
             let mut preferences = MONITOR_INDEX_PREFERENCES.lock();
             preferences.clone_from(monitor_index_preferences);
@@ -1369,4 +1377,106 @@ fn populate_rules(
     }
 
     Ok(())
+}
+
+/// Sets all atomic and mutex values to default. This should only be done before loading a new
+/// config to make sure we always have the defaults reapply if the user removed some config.
+pub fn set_defaults() {
+    let mut preferences = MONITOR_INDEX_PREFERENCES.lock();
+    *preferences = HashMap::new();
+
+    let mut preferences = DISPLAY_INDEX_PREFERENCES.lock();
+    *preferences = HashMap::new();
+
+    let mut window_hiding_behaviour = HIDING_BEHAVIOUR.lock();
+    *window_hiding_behaviour = HidingBehaviour::Cloak;
+
+    window::MINIMUM_HEIGHT.store(0, Ordering::SeqCst);
+    window::MINIMUM_WIDTH.store(0, Ordering::SeqCst);
+
+    ANIMATION_ENABLED_GLOBAL.store(DEFAULT_ANIMATION_ENABLED, Ordering::SeqCst);
+    ANIMATION_ENABLED_PER_ANIMATION.lock().clear();
+    let mut animation_style = ANIMATION_STYLE_GLOBAL.lock();
+    *animation_style = DEFAULT_ANIMATION_STYLE;
+    ANIMATION_STYLE_PER_ANIMATION.lock().clear();
+    ANIMATION_DURATION_GLOBAL.store(DEFAULT_ANIMATION_DURATION, Ordering::SeqCst);
+    ANIMATION_DURATION_PER_ANIMATION.lock().clear();
+    ANIMATION_FPS.store(DEFAULT_ANIMATION_FPS, Ordering::SeqCst);
+
+    DEFAULT_CONTAINER_PADDING.store(10, Ordering::SeqCst);
+    DEFAULT_WORKSPACE_PADDING.store(10, Ordering::SeqCst);
+    SLOW_APPLICATION_COMPENSATION_TIME.store(20, Ordering::SeqCst);
+
+    border_manager::BORDER_WIDTH.store(8, Ordering::SeqCst);
+    border_manager::BORDER_OFFSET.store(-1, Ordering::SeqCst);
+
+    border_manager::BORDER_ENABLED.store(true, Ordering::SeqCst);
+
+    border_manager::FOCUSED.store(
+        u32::from(Colour::Rgb(Rgb::new(66, 165, 245))),
+        Ordering::SeqCst,
+    );
+
+    border_manager::STACK.store(
+        u32::from(Colour::Rgb(Rgb::new(0, 165, 66))),
+        Ordering::SeqCst,
+    );
+
+    border_manager::MONOCLE.store(
+        u32::from(Colour::Rgb(Rgb::new(255, 51, 153))),
+        Ordering::SeqCst,
+    );
+
+    border_manager::FLOATING.store(
+        u32::from(Colour::Rgb(Rgb::new(245, 245, 165))),
+        Ordering::SeqCst,
+    );
+
+    border_manager::UNFOCUSED.store(
+        u32::from(Colour::Rgb(Rgb::new(128, 128, 128))),
+        Ordering::SeqCst,
+    );
+
+    STYLE.store(BorderStyle::default());
+
+    IMPLEMENTATION.store(BorderImplementation::Komorebi);
+
+    transparency_manager::TRANSPARENCY_ENABLED.store(false, Ordering::SeqCst);
+    transparency_manager::TRANSPARENCY_ALPHA.store(200, Ordering::SeqCst);
+
+    {
+        let mut ignore_identifiers = IGNORE_IDENTIFIERS.lock();
+        *ignore_identifiers = Vec::new();
+        let mut regex_identifiers = REGEX_IDENTIFIERS.lock();
+        *regex_identifiers = HashMap::new();
+        let mut manage_identifiers = MANAGE_IDENTIFIERS.lock();
+        *manage_identifiers = Vec::new();
+        let mut tray_and_multi_window_identifiers = TRAY_AND_MULTI_WINDOW_IDENTIFIERS.lock();
+        *tray_and_multi_window_identifiers = Vec::new();
+        let mut object_name_change_identifiers = OBJECT_NAME_CHANGE_ON_LAUNCH.lock();
+        *object_name_change_identifiers = Vec::new();
+        let mut layered_identifiers = LAYERED_WHITELIST.lock();
+        *layered_identifiers = Vec::new();
+        let mut transparency_blacklist = TRANSPARENCY_BLACKLIST.lock();
+        *transparency_blacklist = Vec::new();
+        let mut slow_application_identifiers = SLOW_APPLICATION_IDENTIFIERS.lock();
+        *slow_application_identifiers = Vec::new();
+        let mut floating_applications = FLOATING_APPLICATIONS.lock();
+        *floating_applications = Vec::new();
+        let mut no_titlebar_applications = NO_TITLEBAR.lock();
+        *no_titlebar_applications = Vec::new();
+
+        let mut workspace_rules = WORKSPACE_MATCHING_RULES.lock();
+        *workspace_rules = Vec::new();
+    }
+
+    STACKBAR_FONT_SIZE.store(0, Ordering::SeqCst);
+    STACKBAR_FOCUSED_TEXT_COLOUR.store(16777215, Ordering::SeqCst);
+    STACKBAR_UNFOCUSED_TEXT_COLOUR.store(11776947, Ordering::SeqCst);
+    STACKBAR_TAB_BACKGROUND_COLOUR.store(3355443, Ordering::SeqCst);
+    STACKBAR_TAB_HEIGHT.store(40, Ordering::SeqCst);
+    STACKBAR_TAB_WIDTH.store(200, Ordering::SeqCst);
+    STACKBAR_LABEL.store(StackbarLabel::Process);
+    STACKBAR_MODE.store(StackbarMode::OnStack);
+    *STACKBAR_FONT_FAMILY.lock() = None;
 }
