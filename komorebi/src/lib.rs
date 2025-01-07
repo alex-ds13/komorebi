@@ -57,9 +57,7 @@ pub use window_manager_event::*;
 pub use windows_api::WindowsApi;
 pub use windows_api::*;
 
-use crate::core::config_generation::IdWithIdentifier;
 use crate::core::config_generation::MatchingRule;
-use crate::core::config_generation::MatchingStrategy;
 use crate::core::config_generation::WorkspaceMatchingRule;
 use color_eyre::Result;
 use os_info::Version;
@@ -74,59 +72,10 @@ use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
 lazy_static! {
-    static ref HIDDEN_HWNDS: Arc<Mutex<Vec<isize>>> = Arc::new(Mutex::new(vec![]));
-    static ref LAYERED_WHITELIST: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Exe,
-            id: String::from("steam.exe"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-    ]));
-    static ref TRAY_AND_MULTI_WINDOW_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> =
-        Arc::new(Mutex::new(vec![
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("explorer.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            }),
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("firefox.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            }),
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("chrome.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            }),
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("idea64.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            }),
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("ApplicationFrameHost.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            }),
-            MatchingRule::Simple(IdWithIdentifier {
-                kind: ApplicationIdentifier::Exe,
-                id: String::from("steam.exe"),
-                matching_strategy: Option::from(MatchingStrategy::Equals),
-            })
-        ]));
-    static ref OBJECT_NAME_CHANGE_ON_LAUNCH: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Exe,
-            id: String::from("firefox.exe"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Exe,
-            id: String::from("idea64.exe"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-    ]));
+    static ref HIDDEN_HWNDS: Arc<Mutex<Vec<isize>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref LAYERED_WHITELIST: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref TRAY_AND_MULTI_WINDOW_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref OBJECT_NAME_CHANGE_ON_LAUNCH: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
     static ref TRANSPARENCY_BLACKLIST: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
     static ref MONITOR_INDEX_PREFERENCES: Arc<Mutex<HashMap<usize, Rect>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -136,26 +85,8 @@ lazy_static! {
         Arc::new(Mutex::new(Vec::new()));
     static ref REGEX_IDENTIFIERS: Arc<Mutex<HashMap<String, Regex>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    static ref MANAGE_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![]));
-    static ref IGNORE_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![
-        // mstsc.exe creates these on Windows 11 when a WSL process is launched
-        // https://github.com/LGUG2Z/komorebi/issues/74
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Class,
-            id: String::from("OPContainerClass"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Class,
-            id: String::from("IHWindowClass"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Exe,
-            id: String::from("komorebi-bar.exe"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        })
-    ]));
+    static ref MANAGE_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref IGNORE_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
     static ref FLOATING_APPLICATIONS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
     static ref PERMAIGNORE_CLASSES: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![
         "Chrome_RenderWidgetHostHWND".to_string(),
@@ -164,13 +95,7 @@ lazy_static! {
         "X410.exe".to_string(),
         "vcxsrv.exe".to_string(),
     ]));
-    static ref SLOW_APPLICATION_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![
-        MatchingRule::Simple(IdWithIdentifier {
-            kind: ApplicationIdentifier::Exe,
-            id: String::from("firefox.exe"),
-            matching_strategy: Option::from(MatchingStrategy::Equals),
-        }),
-    ]));
+    static ref SLOW_APPLICATION_IDENTIFIERS: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
     static ref SUBSCRIPTION_PIPES: Arc<Mutex<HashMap<String, File>>> =
         Arc::new(Mutex::new(HashMap::new()));
     pub static ref SUBSCRIPTION_SOCKETS: Arc<Mutex<HashMap<String, PathBuf>>> =
@@ -215,7 +140,7 @@ lazy_static! {
 
     // Use app-specific titlebar removal options where possible
     // eg. Windows Terminal, IntelliJ IDEA, Firefox
-    static ref NO_TITLEBAR: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(vec![]));
+    static ref NO_TITLEBAR: Arc<Mutex<Vec<MatchingRule>>> = Arc::new(Mutex::new(Vec::new()));
 
     static ref WINDOWS_BY_BAR_HWNDS: Arc<Mutex<HashMap<isize, VecDeque<isize>>>> =
         Arc::new(Mutex::new(HashMap::new()));
