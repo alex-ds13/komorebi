@@ -14,6 +14,16 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 /// The `komorebi.bar.json` configuration file reference for `v0.1.34`
 pub struct KomobarConfig {
+    /// Bar height
+    pub height: Option<f32>,
+    /// Bar horizontal padding
+    pub horizontal_padding: Option<f32>,
+    /// Bar vertical padding
+    pub vertical_padding: Option<f32>,
+    /// Bar horizontal margin
+    pub horizontal_margin: Option<f32>,
+    /// Bar vertical margin
+    pub vertical_margin: Option<f32>,
     /// Bar positioning options
     #[serde(alias = "viewport")]
     pub position: Option<PositionConfig>,
