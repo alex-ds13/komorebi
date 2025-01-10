@@ -16,14 +16,18 @@ use std::path::PathBuf;
 pub struct KomobarConfig {
     /// Bar height
     pub height: Option<f32>,
-    /// Bar horizontal padding
-    pub horizontal_padding: Option<f32>,
-    /// Bar vertical padding
-    pub vertical_padding: Option<f32>,
-    /// Bar horizontal margin
-    pub horizontal_margin: Option<f32>,
-    /// Bar vertical margin
-    pub vertical_margin: Option<f32>,
+    /// Bar horizontal padding. Use one value for symmetric padding or use `[left, right]` to
+    /// specify a different padding on each side.
+    pub horizontal_padding: Option<SpacingAxisConfig>,
+    /// Bar vertical padding. Use one value for symmetric padding or use `[top, bottom]` to
+    /// specify a different padding on each side.
+    pub vertical_padding: Option<SpacingAxisConfig>,
+    /// Bar horizontal margin. Use one value for symmetric margin or use `[left, right]` to
+    /// specify a different margin on each side.
+    pub horizontal_margin: Option<SpacingAxisConfig>,
+    /// Bar vertical margin. Use one value for symmetric margin or use `[top, bottom]` to
+    /// specify a different margin on each side.
+    pub vertical_margin: Option<SpacingAxisConfig>,
     /// Bar positioning options
     #[serde(alias = "viewport")]
     pub position: Option<PositionConfig>,
@@ -106,6 +110,16 @@ pub struct MonitorConfig {
     pub index: usize,
     /// Automatically apply a work area offset for this monitor to accommodate the bar
     pub work_area_offset: Option<Rect>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum SpacingAxisConfig {
+    /// A symmetric spacing on some axis (horizontal or vertical), with the same size on both sides
+    Symmetric(f32),
+    /// A detailed spacing on some axis (horizontal or vertical), with a size for each side. If an
+    /// horizontal spacing, then it will be (left, right), if vertical it will be (top, bottom)
+    Detailed((f32, f32)),    
 }
 
 impl KomobarConfig {

@@ -2,6 +2,7 @@ use crate::config::KomobarConfig;
 use crate::config::KomobarTheme;
 use crate::config::Position;
 use crate::config::PositionConfig;
+use crate::config::SpacingAxisConfig;
 use crate::komorebi::Komorebi;
 use crate::komorebi::KomorebiNotificationState;
 use crate::process_hwnd;
@@ -316,15 +317,23 @@ impl Komobar {
                 }
             }
         } else if let Some(height) = config.height {
+            // We only add the `bottom_margin` to the work_area_offset since the top margin is
+            // already considered on the `size_rect.top`
             let new_rect = komorebi_client::Rect {
                 left: 0,
                 top: (height as i32)
                     + self.size_rect.top
-                    + config.vertical_margin.map_or(0, |v| v as i32),
+                    + config.vertical_margin.as_ref().map_or(0, |v| match v {
+                        SpacingAxisConfig::Symmetric(m) => *m as i32,
+                        SpacingAxisConfig::Detailed((_, bottom)) => *bottom as i32,
+                    }),
                 right: 0,
                 bottom: (height as i32)
                     + self.size_rect.top
-                    + config.vertical_margin.map_or(0, |v| v as i32),
+                    + config.vertical_margin.as_ref().map_or(0, |v| match v {
+                        SpacingAxisConfig::Symmetric(m) => *m as i32,
+                        SpacingAxisConfig::Detailed((_, bottom)) => *bottom as i32,
+                    }),
             };
             if new_rect != self.work_area_offset {
                 self.work_area_offset = new_rect;
@@ -379,13 +388,24 @@ impl Komobar {
             end.y = height;
         }
 
-        if let Some(vertical_margin) = config.vertical_margin {
-            start.y += vertical_margin;
+        if let Some(vertical_margin) = &config.vertical_margin {
+            match vertical_margin {
+                SpacingAxisConfig::Symmetric(m) => start.y += m,
+                SpacingAxisConfig::Detailed((top, _)) => start.y += top,
+            }
         }
 
-        if let Some(horizontal_margin) = config.horizontal_margin {
-            start.x += horizontal_margin;
-            end.x -= horizontal_margin * 2.0;
+        if let Some(horizontal_margin) = &config.horizontal_margin {
+            match horizontal_margin {
+                SpacingAxisConfig::Symmetric(m) => {
+                    start.x += m;
+                    end.x -= m * 2.0;
+                }
+                SpacingAxisConfig::Detailed((left, right)) => {
+                    start.x += left;
+                    end.x -= left + right;
+                }
+            }
         }
 
         if end.y == 0.0 {
@@ -644,7 +664,10 @@ impl eframe::App for Komobar {
             }
         }
 
-        let frame = match (self.config.horizontal_padding, self.config.vertical_padding) {
+        let frame = match (
+            &self.config.horizontal_padding,
+            &self.config.vertical_padding,
+        ) {
             (None, None) => {
                 if let Some(frame) = &self.config.frame {
                     Frame::none()
@@ -659,15 +682,46 @@ impl eframe::App for Komobar {
                         .fill(*self.bg_color_with_alpha.borrow())
                 }
             }
-            (None, Some(vertical_padding)) => Frame::none()
-                .inner_margin(Margin::symmetric(0.0, vertical_padding))
+            (None, Some(SpacingAxisConfig::Symmetric(vertical_padding))) => Frame::none()
+                .inner_margin(Margin::symmetric(0.0, *vertical_padding))
                 .fill(*self.bg_color_with_alpha.borrow()),
-            (Some(horizontal_padding), None) => Frame::none()
-                .inner_margin(Margin::symmetric(horizontal_padding, 0.0))
+            (None, Some(SpacingAxisConfig::Detailed((top, bottom)))) => Frame::none()
+                .inner_margin(Margin {
+                    left: 0.0,
+                    right: 0.0,
+                    top: *top,
+                    bottom: *bottom,
+                })
                 .fill(*self.bg_color_with_alpha.borrow()),
-            (Some(horizontal_padding), Some(vertical_padding)) => Frame::none()
-                .inner_margin(Margin::symmetric(horizontal_padding, vertical_padding))
+            (Some(SpacingAxisConfig::Symmetric(horizontal_padding)), None) => Frame::none()
+                .inner_margin(Margin::symmetric(*horizontal_padding, 0.0))
                 .fill(*self.bg_color_with_alpha.borrow()),
+            (Some(SpacingAxisConfig::Detailed((left, right))), None) => Frame::none()
+                .inner_margin(Margin {
+                    left: *left,
+                    right: *right,
+                    top: 0.0,
+                    bottom: 0.0,
+                })
+                .fill(*self.bg_color_with_alpha.borrow()),
+            (Some(horizontal_padding), Some(vertical_padding)) => {
+                let (left, right) = match horizontal_padding {
+                    SpacingAxisConfig::Symmetric(m) => (*m, *m),
+                    SpacingAxisConfig::Detailed((l, r)) => (*l, *r),
+                };
+                let (top, bottom) = match vertical_padding {
+                    SpacingAxisConfig::Symmetric(m) => (*m, *m),
+                    SpacingAxisConfig::Detailed((t, b)) => (*t, *b),
+                };
+                Frame::none()
+                    .inner_margin(Margin {
+                        left,
+                        right,
+                        top,
+                        bottom,
+                    })
+                    .fill(*self.bg_color_with_alpha.borrow())
+            }
         };
 
         let mut render_config = self.render_config.borrow_mut();
@@ -697,14 +751,27 @@ impl eframe::App for Komobar {
                     .anchor(Align2::LEFT_CENTER, [0.0, 0.0]) // Align in the left center of the window
                     .show(ctx, |ui| {
                         let mut left_area_frame = area_frame;
-                        if let Some(h_padding) = self.config.horizontal_padding {
+                        if let Some(SpacingAxisConfig::Symmetric(h_padding)) =
+                            self.config.horizontal_padding
+                        {
                             left_area_frame.inner_margin.left = h_padding;
+                        } else if let Some(SpacingAxisConfig::Detailed((left, _))) =
+                            self.config.horizontal_padding
+                        {
+                            left_area_frame.inner_margin.left = left;
                         } else if let Some(frame) = &self.config.frame {
                             left_area_frame.inner_margin.left = frame.inner_margin.x;
                         }
-                        if let Some(y_padding) = self.config.vertical_padding {
+                        if let Some(SpacingAxisConfig::Symmetric(y_padding)) =
+                            self.config.vertical_padding
+                        {
                             left_area_frame.inner_margin.top = y_padding;
                             left_area_frame.inner_margin.bottom = y_padding;
+                        } else if let Some(SpacingAxisConfig::Detailed((t, b))) =
+                            self.config.vertical_padding
+                        {
+                            left_area_frame.inner_margin.top = t;
+                            left_area_frame.inner_margin.bottom = b;
                         } else if let Some(frame) = &self.config.frame {
                             left_area_frame.inner_margin.top = frame.inner_margin.y;
                             left_area_frame.inner_margin.bottom = frame.inner_margin.y;
@@ -730,14 +797,27 @@ impl eframe::App for Komobar {
                     .anchor(Align2::RIGHT_CENTER, [0.0, 0.0]) // Align in the right center of the window
                     .show(ctx, |ui| {
                         let mut right_area_frame = area_frame;
-                        if let Some(h_padding) = self.config.horizontal_padding {
+                        if let Some(SpacingAxisConfig::Symmetric(h_padding)) =
+                            self.config.horizontal_padding
+                        {
                             right_area_frame.inner_margin.right = h_padding;
+                        } else if let Some(SpacingAxisConfig::Detailed((_, right))) =
+                            self.config.horizontal_padding
+                        {
+                            right_area_frame.inner_margin.right = right;
                         } else if let Some(frame) = &self.config.frame {
                             right_area_frame.inner_margin.right = frame.inner_margin.x;
                         }
-                        if let Some(y_padding) = self.config.vertical_padding {
+                        if let Some(SpacingAxisConfig::Symmetric(y_padding)) =
+                            self.config.vertical_padding
+                        {
                             right_area_frame.inner_margin.top = y_padding;
                             right_area_frame.inner_margin.bottom = y_padding;
+                        } else if let Some(SpacingAxisConfig::Detailed((t, b))) =
+                            self.config.vertical_padding
+                        {
+                            right_area_frame.inner_margin.top = t;
+                            right_area_frame.inner_margin.bottom = b;
                         } else if let Some(frame) = &self.config.frame {
                             right_area_frame.inner_margin.top = frame.inner_margin.y;
                             right_area_frame.inner_margin.bottom = frame.inner_margin.y;
@@ -763,9 +843,16 @@ impl eframe::App for Komobar {
                     .anchor(Align2::CENTER_CENTER, [0.0, 0.0]) // Align in the center of the window
                     .show(ctx, |ui| {
                         let mut center_area_frame = area_frame;
-                        if let Some(y_padding) = self.config.vertical_padding {
+                        if let Some(SpacingAxisConfig::Symmetric(y_padding)) =
+                            self.config.vertical_padding
+                        {
                             center_area_frame.inner_margin.top = y_padding;
                             center_area_frame.inner_margin.bottom = y_padding;
+                        } else if let Some(SpacingAxisConfig::Detailed((t, b))) =
+                            self.config.vertical_padding
+                        {
+                            center_area_frame.inner_margin.top = t;
+                            center_area_frame.inner_margin.bottom = b;
                         } else if let Some(frame) = &self.config.frame {
                             center_area_frame.inner_margin.top = frame.inner_margin.y;
                             center_area_frame.inner_margin.bottom = frame.inner_margin.y;
