@@ -34,7 +34,7 @@ pub struct KomobarConfig {
     /// Frame options (see: https://docs.rs/egui/latest/egui/containers/frame/struct.Frame.html)
     pub frame: Option<FrameConfig>,
     /// Monitor options
-    pub monitor: MonitorConfig,
+    pub monitor: MonitorConfigOrIndex,
     /// Font family
     pub font_family: Option<String>,
     /// Font size (default: 12.5)
@@ -105,6 +105,15 @@ pub struct FrameConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum MonitorConfigOrIndex {
+    /// A `MonitorConfig` struct with the monitor index and an optional `work_area_offset`
+    MonitorConfig(MonitorConfig),
+    /// The monitor index where you want the bar to show
+    Index(usize),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MonitorConfig {
     /// Komorebi monitor index of the monitor on which to render the bar
     pub index: usize,
@@ -119,7 +128,7 @@ pub enum SpacingAxisConfig {
     Symmetric(f32),
     /// A detailed spacing on some axis (horizontal or vertical), with a size for each side. If an
     /// horizontal spacing, then it will be (left, right), if vertical it will be (top, bottom)
-    Detailed((f32, f32)),    
+    Detailed((f32, f32)),
 }
 
 impl KomobarConfig {

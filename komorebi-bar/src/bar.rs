@@ -1,5 +1,6 @@
 use crate::config::KomobarConfig;
 use crate::config::KomobarTheme;
+use crate::config::MonitorConfigOrIndex;
 use crate::config::Position;
 use crate::config::PositionConfig;
 use crate::config::SpacingAxisConfig;
@@ -53,6 +54,7 @@ use std::sync::Arc;
 
 pub struct Komobar {
     pub hwnd: Option<isize>,
+    pub monitor_index: usize,
     pub config: Arc<KomobarConfig>,
     pub render_config: Rc<RefCell<RenderConfig>>,
     pub komorebi_notification_state: Option<Rc<RefCell<KomorebiNotificationState>>>,
@@ -297,23 +299,29 @@ impl Komobar {
         self.center_widgets = center_widgets;
         self.right_widgets = right_widgets;
 
-        if let (prev_rect, Some(new_rect)) =
-            (&self.work_area_offset, &config.monitor.work_area_offset)
-        {
+        let (monitor_index, config_work_area_offset) = match &config.monitor {
+            MonitorConfigOrIndex::MonitorConfig(monitor_config) => {
+                (monitor_config.index, monitor_config.work_area_offset)
+            }
+            MonitorConfigOrIndex::Index(idx) => (*idx, None),
+        };
+        self.monitor_index = monitor_index;
+
+        if let (prev_rect, Some(new_rect)) = (&self.work_area_offset, &config_work_area_offset) {
             if new_rect != prev_rect {
                 self.work_area_offset = *new_rect;
                 if let Err(error) = komorebi_client::send_message(
-                    &SocketMessage::MonitorWorkAreaOffset(config.monitor.index, *new_rect),
+                    &SocketMessage::MonitorWorkAreaOffset(self.monitor_index, *new_rect),
                 ) {
                     tracing::error!(
                         "error applying work area offset to monitor '{}': {}",
-                        config.monitor.index,
+                        self.monitor_index,
                         error,
                     );
                 } else {
                     tracing::info!(
                         "work area offset applied to monitor: {}",
-                        config.monitor.index
+                        self.monitor_index
                     );
                 }
             }
@@ -339,17 +347,17 @@ impl Komobar {
             if new_rect != self.work_area_offset {
                 self.work_area_offset = new_rect;
                 if let Err(error) = komorebi_client::send_message(
-                    &SocketMessage::MonitorWorkAreaOffset(config.monitor.index, new_rect),
+                    &SocketMessage::MonitorWorkAreaOffset(self.monitor_index, new_rect),
                 ) {
                     tracing::error!(
                         "error applying work area offset to monitor '{}': {}",
-                        config.monitor.index,
+                        self.monitor_index,
                         error,
                     );
                 } else {
                     tracing::info!(
                         "work area offset applied to monitor: {}",
-                        config.monitor.index
+                        self.monitor_index
                     );
                 }
             }
@@ -515,6 +523,7 @@ impl Komobar {
     ) -> Self {
         let mut komobar = Self {
             hwnd: process_hwnd(),
+            monitor_index: 0,
             config: config.clone(),
             render_config: Rc::new(RefCell::new(RenderConfig::new())),
             komorebi_notification_state: None,
@@ -624,7 +633,7 @@ impl eframe::App for Komobar {
                 .borrow_mut()
                 .handle_notification(
                     ctx,
-                    self.config.monitor.index,
+                    self.monitor_index,
                     self.rx_gui.clone(),
                     self.bg_color.clone(),
                     self.bg_color_with_alpha.clone(),
