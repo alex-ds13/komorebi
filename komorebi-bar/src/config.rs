@@ -14,26 +14,26 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 /// The `komorebi.bar.json` configuration file reference for `v0.1.34`
 pub struct KomobarConfig {
-    /// Bar height
+    /// Bar height (default: 50)
     pub height: Option<f32>,
     /// Bar horizontal padding. Use one value for symmetric padding or use `[left, right]` to
-    /// specify a different padding on each side.
+    /// specify a different padding on each side (default: 10)
     pub horizontal_padding: Option<SpacingAxisConfig>,
     /// Bar vertical padding. Use one value for symmetric padding or use `[top, bottom]` to
-    /// specify a different padding on each side.
+    /// specify a different padding on each side (default: 10)
     pub vertical_padding: Option<SpacingAxisConfig>,
     /// Bar horizontal margin. Use one value for symmetric margin or use `[left, right]` to
-    /// specify a different margin on each side.
+    /// specify a different margin on each side (default: 0)
     pub horizontal_margin: Option<SpacingAxisConfig>,
     /// Bar vertical margin. Use one value for symmetric margin or use `[top, bottom]` to
-    /// specify a different margin on each side.
+    /// specify a different margin on each side (default: 0)
     pub vertical_margin: Option<SpacingAxisConfig>,
     /// Bar positioning options
     #[serde(alias = "viewport")]
     pub position: Option<PositionConfig>,
     /// Frame options (see: https://docs.rs/egui/latest/egui/containers/frame/struct.Frame.html)
     pub frame: Option<FrameConfig>,
-    /// Monitor options
+    /// The monitor index or the full monitor options
     pub monitor: MonitorConfigOrIndex,
     /// Font family
     pub font_family: Option<String>,
@@ -107,10 +107,10 @@ pub struct FrameConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum MonitorConfigOrIndex {
-    /// A `MonitorConfig` struct with the monitor index and an optional `work_area_offset`
-    MonitorConfig(MonitorConfig),
     /// The monitor index where you want the bar to show
     Index(usize),
+    /// The full monitor options with the index and an optional work_area_offset
+    MonitorConfig(MonitorConfig),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
