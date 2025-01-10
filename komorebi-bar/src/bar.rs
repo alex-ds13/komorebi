@@ -317,7 +317,7 @@ impl Komobar {
                     );
                 }
             }
-        } else if let Some(height) = config.height {
+        } else if let Some(height) = config.height.or(Some(BAR_HEIGHT)) {
             // We only add the `bottom_margin` to the work_area_offset since the top margin is
             // already considered on the `size_rect.top`
             let new_rect = komorebi_client::Rect {
