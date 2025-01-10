@@ -35,6 +35,7 @@ use eframe::egui::Margin;
 use eframe::egui::Rgba;
 use eframe::egui::Style;
 use eframe::egui::TextStyle;
+use eframe::egui::Vec2;
 use eframe::egui::Visuals;
 use font_loader::system_fonts;
 use font_loader::system_fonts::FontPropertyBuilder;
@@ -823,16 +824,24 @@ impl eframe::App for Komobar {
                             right_area_frame.inner_margin.bottom = frame.inner_margin.y;
                         }
                         right_area_frame.show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let mut render_conf = render_config.clone();
-                                render_conf.alignment = Some(Alignment::Right);
+                            let initial_size = Vec2 {
+                                x: ui.available_size_before_wrap().x,
+                                y: ui.spacing().interact_size.y,
+                            };
+                            ui.allocate_ui_with_layout(
+                                initial_size,
+                                Layout::right_to_left(Align::Center),
+                                |ui| {
+                                    let mut render_conf = render_config.clone();
+                                    render_conf.alignment = Some(Alignment::Right);
 
-                                render_config.apply_on_alignment(ui, |ui| {
-                                    for w in &mut self.right_widgets {
-                                        w.render(ctx, ui, &mut render_conf);
-                                    }
-                                });
-                            });
+                                    render_config.apply_on_alignment(ui, |ui| {
+                                        for w in &mut self.right_widgets {
+                                            w.render(ctx, ui, &mut render_conf);
+                                        }
+                                    });
+                                },
+                            );
                         });
                     });
             }
