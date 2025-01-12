@@ -331,14 +331,14 @@ impl Komobar {
             let new_rect = komorebi_client::Rect {
                 left: 0,
                 top: (height as i32)
-                    + self.size_rect.top
+                    + (self.size_rect.top - MONITOR_TOP.load(Ordering::SeqCst))
                     + config.vertical_margin.as_ref().map_or(0, |v| match v {
                         SpacingAxisConfig::Symmetric(m) => *m as i32,
                         SpacingAxisConfig::Detailed((_, bottom)) => *bottom as i32,
                     }),
                 right: 0,
                 bottom: (height as i32)
-                    + self.size_rect.top
+                    + (self.size_rect.top - MONITOR_TOP.load(Ordering::SeqCst))
                     + config.vertical_margin.as_ref().map_or(0, |v| match v {
                         SpacingAxisConfig::Symmetric(m) => *m as i32,
                         SpacingAxisConfig::Detailed((_, bottom)) => *bottom as i32,

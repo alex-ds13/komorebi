@@ -248,7 +248,7 @@ fn main() -> color_eyre::Result<()> {
         Ordering::SeqCst,
     );
 
-    MONITOR_TOP.store(
+    MONITOR_LEFT.store(
         state.monitors.elements()[monitor_index].size().left,
         Ordering::SeqCst,
     );
