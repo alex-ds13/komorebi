@@ -111,7 +111,7 @@ pub struct BorderColours {
     pub unfocused: Option<Colour>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct WorkspaceConfig {
     /// Name
     pub name: String,
@@ -190,7 +190,6 @@ impl From<&Workspace> for WorkspaceConfig {
                 .name()
                 .clone()
                 .unwrap_or_else(|| String::from("unnamed")),
-            custom_layout: None,
             layout: value
                 .tile()
                 .then_some(match value.layout() {
@@ -198,13 +197,13 @@ impl From<&Workspace> for WorkspaceConfig {
                     Layout::Custom(_) => None,
                 })
                 .flatten(),
+            custom_layout: value.workspace_config().as_ref().and_then(|c| c.custom_layout.clone()),
             layout_rules: Option::from(layout_rules),
-            // TODO: figure out how we might resolve file references in the future
-            custom_layout_rules: None,
+            custom_layout_rules: value.workspace_config().as_ref().and_then(|c| c.custom_layout_rules.clone()),
             container_padding,
             workspace_padding,
-            initial_workspace_rules: None,
-            workspace_rules: None,
+            initial_workspace_rules: value.workspace_config().as_ref().and_then(|c| c.initial_workspace_rules.clone()),
+            workspace_rules: value.workspace_config().as_ref().and_then(|c| c.workspace_rules.clone()),
             apply_window_based_work_area_offset: Some(value.apply_window_based_work_area_offset()),
             window_container_behaviour: *value.window_container_behaviour(),
             float_override: *value.float_override(),
