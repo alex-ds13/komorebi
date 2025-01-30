@@ -50,6 +50,7 @@ pub use komorebi::State;
 pub use komorebi::StaticConfig;
 pub use komorebi::SubscribeOptions;
 pub use komorebi::TabsConfig;
+pub use komorebi::WindowsApi;
 
 use komorebi::DATA_DIR;
 
