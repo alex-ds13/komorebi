@@ -10,7 +10,9 @@ use crate::widget::BarWidget;
 use crate::ICON_CACHE;
 use crate::MAX_LABEL_WIDTH;
 use crate::MONITOR_INDEX;
+use eframe::egui::text::LayoutJob;
 use eframe::egui::vec2;
+use eframe::egui::Align;
 use eframe::egui::Color32;
 use eframe::egui::ColorImage;
 use eframe::egui::Context;
@@ -21,6 +23,7 @@ use eframe::egui::Margin;
 use eframe::egui::Rounding;
 use eframe::egui::Sense;
 use eframe::egui::Stroke;
+use eframe::egui::TextFormat;
 use eframe::egui::TextureHandle;
 use eframe::egui::TextureOptions;
 use eframe::egui::Ui;
@@ -82,6 +85,10 @@ pub struct KomorebiLayoutConfig {
 pub struct KomorebiWorkspaceLayerConfig {
     /// Enable the Komorebi Workspace Layer widget
     pub enable: bool,
+    /// Display format of the current layer
+    pub display: Option<DisplayFormat>,
+    /// Show the widget event if the layer is Tiling
+    pub show_when_tiling: Option<bool>,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -301,29 +308,72 @@ impl BarWidget for Komorebi {
                     .map(|(_, _, layer)| layer);
 
                 if let Some(layer) = layer {
-                    let name = layer.to_string();
-                    config.apply_on_widget(false, ui, |ui| {
-                        if SelectableFrame::new(false)
-                            .show(ui, |ui| ui.add(Label::new(name).selectable(false)))
-                            .clicked()
-                            && komorebi_client::send_batch([
-                                SocketMessage::MouseFollowsFocus(false),
-                                SocketMessage::ToggleWorkspaceLayer,
-                                SocketMessage::MouseFollowsFocus(
-                                    komorebi_notification_state.mouse_follows_focus,
-                                ),
-                            ])
-                            .is_err()
-                        {
-                            tracing::error!(
-                                "could not send the following batch of messages to komorebi:\n\
-                                            MouseFollowsFocus(false),
-                                            ToggleWorkspaceLayer,
-                                            MouseFollowsFocus({})",
-                                komorebi_notification_state.mouse_follows_focus,
-                            );
+                    if (layer_config.show_when_tiling.unwrap_or_default()
+                        && matches!(layer, WorkspaceLayer::Tiling))
+                        || matches!(layer, WorkspaceLayer::Floating)
+                    {
+                        let name = layer.to_string();
+                        let emoji = match layer {
+                            WorkspaceLayer::Tiling => egui_phosphor::regular::GRID_FOUR,
+                            WorkspaceLayer::Floating => egui_phosphor::regular::FEATHER,
+                        };
+
+                        let display_format = layer_config.display.unwrap_or(DisplayFormat::Text);
+                        let mut layout_job = LayoutJob::simple(
+                            match display_format {
+                                DisplayFormat::Icon
+                                | DisplayFormat::IconAndText
+                                | DisplayFormat::IconAndTextOnSelected
+                                | DisplayFormat::TextAndIconOnSelected => emoji.to_string(),
+                                DisplayFormat::Text => String::new(),
+                            },
+                            config.text_font_id.clone(),
+                            ctx.style().visuals.selection.stroke.color,
+                            100.0,
+                        );
+
+                        match display_format {
+                            DisplayFormat::Icon => {}
+                            DisplayFormat::Text
+                            | DisplayFormat::TextAndIconOnSelected
+                            | DisplayFormat::IconAndText
+                            | DisplayFormat::IconAndTextOnSelected => {
+                                layout_job.append(
+                                    &name,
+                                    10.0,
+                                    TextFormat {
+                                        font_id: config.text_font_id.clone(),
+                                        color: ctx.style().visuals.text_color(),
+                                        valign: Align::Center,
+                                        ..Default::default()
+                                    },
+                                );
+                            }
                         }
-                    });
+
+                        config.apply_on_widget(false, ui, |ui| {
+                            if SelectableFrame::new(false)
+                                .show(ui, |ui| ui.add(Label::new(layout_job).selectable(false)))
+                                .clicked()
+                                && komorebi_client::send_batch([
+                                    SocketMessage::MouseFollowsFocus(false),
+                                    SocketMessage::ToggleWorkspaceLayer,
+                                    SocketMessage::MouseFollowsFocus(
+                                        komorebi_notification_state.mouse_follows_focus,
+                                    ),
+                                ])
+                                .is_err()
+                            {
+                                tracing::error!(
+                                    "could not send the following batch of messages to komorebi:\n\
+                                                MouseFollowsFocus(false),
+                                                ToggleWorkspaceLayer,
+                                                MouseFollowsFocus({})",
+                                    komorebi_notification_state.mouse_follows_focus,
+                                );
+                            }
+                        });
+                    }
                 }
             }
         }
