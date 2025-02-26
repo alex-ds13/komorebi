@@ -3,7 +3,6 @@ use crate::border_manager::RenderTarget;
 use crate::border_manager::WindowKind;
 use crate::border_manager::BORDER_OFFSET;
 use crate::border_manager::BORDER_WIDTH;
-use crate::border_manager::FOCUS_STATE;
 use crate::border_manager::RENDER_TARGETS;
 use crate::border_manager::STYLE;
 use crate::core::BorderStyle;
@@ -475,13 +474,6 @@ impl Border {
                             });
 
                             // Get window kind and color
-
-                            (*border_pointer).window_kind = FOCUS_STATE
-                                .lock()
-                                .get(&(window.0 as isize))
-                                .copied()
-                                .unwrap_or(WindowKind::Unfocused);
-
                             let window_kind = (*border_pointer).window_kind;
                             if let Some(brush) = (*border_pointer).brushes.get(&window_kind) {
                                 render_target.BeginDraw();
