@@ -3,8 +3,6 @@ use crate::border_manager::RenderTarget;
 use crate::border_manager::WindowKind;
 use crate::border_manager::BORDER_OFFSET;
 use crate::border_manager::BORDER_WIDTH;
-use crate::border_manager::FOCUS_STATE;
-use crate::border_manager::RENDER_TARGETS;
 use crate::border_manager::STYLE;
 use crate::core::BorderStyle;
 use crate::core::Rect;
@@ -114,6 +112,8 @@ pub extern "system" fn border_hwnds(hwnd: HWND, lparam: LPARAM) -> BOOL {
 #[derive(Debug, Clone)]
 pub struct Border {
     pub hwnd: isize,
+    pub id: String,
+    pub monitor_idx: Option<usize>,
     pub render_target: OnceLock<RenderTarget>,
     pub tracking_hwnd: isize,
     pub window_rect: Rect,
@@ -130,6 +130,8 @@ impl From<isize> for Border {
     fn from(value: isize) -> Self {
         Self {
             hwnd: value,
+            id: String::new(),
+            monitor_idx: None,
             render_target: OnceLock::new(),
             tracking_hwnd: 0,
             window_rect: Rect::default(),
@@ -149,7 +151,11 @@ impl Border {
         HWND(windows_api::as_ptr!(self.hwnd))
     }
 
-    pub fn create(id: &str, tracking_hwnd: isize) -> color_eyre::Result<Self> {
+    pub fn create(
+        id: &str,
+        tracking_hwnd: isize,
+        monitor_idx: usize,
+    ) -> color_eyre::Result<Box<Self>> {
         let name: Vec<u16> = format!("komoborder-{id}\0").encode_utf16().collect();
         let class_name = PCWSTR(name.as_ptr());
 
@@ -168,9 +174,12 @@ impl Border {
         let (border_sender, border_receiver) = mpsc::channel();
 
         let instance = h_module.0 as isize;
+        let container_id = id.to_owned();
         std::thread::spawn(move || -> color_eyre::Result<()> {
             let mut border = Self {
                 hwnd: 0,
+                id: container_id,
+                monitor_idx: Some(monitor_idx),
                 render_target: OnceLock::new(),
                 tracking_hwnd,
                 window_rect: WindowsApi::window_rect(tracking_hwnd).unwrap_or_default(),
@@ -183,12 +192,16 @@ impl Border {
                 brushes: HashMap::new(),
             };
 
-            let border_pointer = std::ptr::addr_of!(border);
+            let border_pointer = &raw mut border;
+            println!("!!!!!!!!!!!!!!!!! CREATE: {:?}", border_pointer);
             let hwnd =
                 WindowsApi::create_border_window(PCWSTR(name.as_ptr()), instance, border_pointer)?;
 
-            border.hwnd = hwnd;
-            border_sender.send(border_pointer as isize)?;
+            let boxed = unsafe {
+                (*border_pointer).hwnd = hwnd;
+                Box::from_raw(border_pointer)
+            };
+            border_sender.send(boxed)?;
 
             let mut msg: MSG = MSG::default();
 
@@ -196,6 +209,8 @@ impl Border {
                 unsafe {
                     if !GetMessageW(&mut msg, None, 0, 0).as_bool() {
                         tracing::debug!("border window event processing thread shutdown");
+                        std::ptr::drop_in_place(&mut msg);
+                        println!("%%%%%% AFTER MSG DROP");
                         break;
                     };
                     // TODO: error handling
@@ -203,12 +218,22 @@ impl Border {
                     DispatchMessageW(&msg);
                 }
             }
+            drop(border_sender);
+            println!("%%%%%% AFTER SENDER DROP");
+            // Forget about this border, since its pointer was sent to the border_manager and it
+            // will be responsible for dropping the actual border when removing it.
+            // std::mem::forget(border);
+            // println!("%%%%%% AFTER INITIAL BORDER FORGET");
+            drop(border);
+            println!("%%%%%% AFTER ACTUAL BORDER DROP");
+            println!("%%%%%% CREATE THREAD END");
 
             Ok(())
         });
 
-        let border_ref = border_receiver.recv()?;
-        let border = unsafe { &mut *(border_ref as *mut Border) };
+        let mut border = border_receiver.recv()?;
+        println!("!!!!!!!!!!!!!!!!! RECV: {:?}", &raw mut *border);
+        // let border = unsafe { &mut *(border_ref as *mut Border) };
 
         // I have literally no idea, apparently this is to get rid of the black pixels
         // around the edges of rounded corners? @lukeyou05 borrowed this from PowerToys
@@ -292,17 +317,13 @@ impl Border {
                     }
                 };
 
-                let mut render_targets = RENDER_TARGETS.lock();
-                render_targets.insert(border.hwnd, RenderTarget(render_target));
-                Ok(border.clone())
+                Ok(border)
             },
             Err(error) => Err(error.into()),
         }
     }
 
     pub fn destroy(&self) -> color_eyre::Result<()> {
-        let mut render_targets = RENDER_TARGETS.lock();
-        render_targets.remove(&self.hwnd);
         WindowsApi::close_window(self.hwnd)
     }
 
@@ -333,9 +354,11 @@ impl Border {
                     let mut border_pointer: *mut Border =
                         GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
+                    println!("!!!!!!!!!!!!!!!!! WM_CREATE: {:?}", border_pointer);
                     if border_pointer.is_null() {
                         let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
                         border_pointer = (*create_struct).lpCreateParams as *mut _;
+                        println!("!!!!!!!!!!!!!!!!! WM_CREATE_NULL: {:?}", border_pointer);
                         SetWindowLongPtrW(window, GWLP_USERDATA, border_pointer as _);
                     }
 
@@ -361,7 +384,7 @@ impl Border {
                         return LRESULT(0);
                     }
 
-                    let reference_hwnd = lparam.0;
+                    let reference_hwnd = (*border_pointer).tracking_hwnd;
 
                     let old_rect = (*border_pointer).window_rect;
                     let rect = WindowsApi::window_rect(reference_hwnd).unwrap_or_default();
@@ -439,6 +462,7 @@ impl Border {
                         let border_pointer: *mut Border =
                             GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
+                        println!("!!!!!!!!!!!!!!!!! WM_PAINT: {:?}", border_pointer);
                         if border_pointer.is_null() {
                             return LRESULT(0);
                         }
@@ -475,11 +499,6 @@ impl Border {
                             });
 
                             // Get window kind and color
-                            (*border_pointer).window_kind = FOCUS_STATE
-                                .lock()
-                                .get(&(window.0 as isize))
-                                .copied()
-                                .unwrap_or(WindowKind::Unfocused);
                             let window_kind = (*border_pointer).window_kind;
                             if let Some(brush) = (*border_pointer).brushes.get(&window_kind) {
                                 render_target.BeginDraw();
@@ -528,8 +547,10 @@ impl Border {
                     LRESULT(0)
                 }
                 WM_DESTROY => {
+                    println!("%%%%%% WM_DESTROY");
                     SetWindowLongPtrW(window, GWLP_USERDATA, 0);
                     PostQuitMessage(0);
+                    println!("%%%%%% WM_DESTROY_END");
                     LRESULT(0)
                 }
                 _ => DefWindowProcW(window, message, wparam, lparam),

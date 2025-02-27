@@ -306,32 +306,8 @@ impl WindowManager {
 
                     let focused_pair = (focused_monitor_idx, focused_workspace_idx);
 
-                    let mut needs_reconciliation = false;
+                    let mut needs_reconciliation = None;
 
-                    if let Some((m_idx, w_idx)) = self.known_hwnds.get(&window.hwnd) {
-                        if focused_pair != (*m_idx, *w_idx) {
-                            // At this point we know we are going to send a notification to the workspace reconciliator
-                            // So we get the topmost window returned by EnumWindows, which is almost always the window
-                            // that has been selected by alt-tab
-                            if let Ok(alt_tab_windows) = WindowsApi::alt_tab_windows() {
-                                if let Some(first) =
-                                    alt_tab_windows.iter().find(|w| w.title().is_ok())
-                                {
-                                    // If our record of this HWND hasn't been updated in over a minute
-                                    let mut instant = ALT_TAB_HWND_INSTANT.lock();
-                                    if instant.elapsed().gt(&Duration::from_secs(1)) {
-                                        // Update our record with the HWND we just found
-                                        ALT_TAB_HWND.store(Some(first.hwnd));
-                                        // Update the timestamp of our record
-                                        *instant = Instant::now();
-                                    }
-                                }
-                            }
-
-                            workspace_reconciliator::send_notification(*m_idx, *w_idx);
-                            needs_reconciliation = true;
-                        }
-                    }
 
                     // There are some applications such as Firefox where, if they are focused when a
                     // workspace switch takes place, it will fire an additional Show event, which will
@@ -339,6 +315,51 @@ impl WindowManager {
                     // being switched to. This loop is to try to ensure that we don't end up with
                     // duplicates across multiple workspaces, as it results in ghost layout tiles.
                     let mut proceed = true;
+
+                    if let Some((m_idx, w_idx)) = self.known_hwnds.get(&window.hwnd) {
+                        needs_reconciliation = (focused_pair != (*m_idx, *w_idx)).then_some((*m_idx, *w_idx));
+                    }
+
+                    if let Some((m_idx, w_idx)) = needs_reconciliation {
+                        self.focus_monitor(m_idx)?;
+                        let mouse_follows_focus = self.mouse_follows_focus;
+                        let offset = self.work_area_offset;
+
+                        if let Some(monitor) = self.focused_monitor_mut() {
+                            let previous_idx = monitor.focused_workspace_idx();
+                            monitor.set_last_focused_workspace(Option::from(previous_idx));
+                            monitor.focus_workspace(w_idx)?;
+                            if let Some(workspace) = monitor.focused_workspace_mut() {
+                                // Regardless of if this fails, we need to get past this part
+                                // to unblock the border manager below
+                                let _ = workspace.focus_container_by_window(window.hwnd);
+                            }
+                            monitor.load_focused_workspace(mouse_follows_focus)?;
+                            monitor.update_focused_workspace(offset)?;
+                            proceed = false;
+                        }
+                        // At this point we know we are going to send a notification to the workspace reconciliator
+                        // So we get the topmost window returned by EnumWindows, which is almost always the window
+                        // that has been selected by alt-tab
+                        // if let Ok(alt_tab_windows) = WindowsApi::alt_tab_windows() {
+                        //     if let Some(first) =
+                        //         alt_tab_windows.iter().find(|w| w.title().is_ok())
+                        //     {
+                        //         // If our record of this HWND hasn't been updated in over a minute
+                        //         let mut instant = ALT_TAB_HWND_INSTANT.lock();
+                        //         if instant.elapsed().gt(&Duration::from_secs(1)) {
+                        //             // Update our record with the HWND we just found
+                        //             // ALT_TAB_HWND.store(Some(first.hwnd));
+                        //             ALT_TAB_HWND.store(Some(window.hwnd));
+                        //             // Update the timestamp of our record
+                        //             *instant = Instant::now();
+                        //         }
+                        //     }
+                        // }
+
+                        // workspace_reconciliator::send_notification(*m_idx, *w_idx);
+                        // needs_reconciliation = true;
+                    }
 
                     if let Some((m_idx, w_idx)) = self.known_hwnds.get(&window.hwnd) {
                         if let Some(focused_workspace_idx) = self
@@ -368,7 +389,7 @@ impl WindowManager {
                         let workspace_contains_window = workspace.contains_window(window.hwnd);
                         let monocle_container = workspace.monocle_container().clone();
 
-                        if !workspace_contains_window && !needs_reconciliation {
+                        if !workspace_contains_window && needs_reconciliation.is_none() {
                             let floating_applications = FLOATING_APPLICATIONS.lock();
                             let mut should_float = false;
 

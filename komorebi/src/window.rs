@@ -492,6 +492,7 @@ impl Window {
             HidingBehaviour::Minimize => WindowsApi::minimize_window(self.hwnd),
             HidingBehaviour::Cloak => SetCloak(self.hwnd(), 1, 2),
         }
+        crate::border_manager::hide_border(self.hwnd);
     }
 
     pub fn restore(self) {
@@ -510,6 +511,7 @@ impl Window {
             }
             HidingBehaviour::Cloak => SetCloak(self.hwnd(), 1, 0),
         }
+        crate::border_manager::show_border(self.hwnd);
     }
 
     pub fn minimize(self) {
@@ -742,8 +744,8 @@ impl Window {
     /// it raises it as well.
     pub fn raise(self) -> Result<()> {
         WindowsApi::raise_window(self.hwnd)?;
-        if let Some(border) = crate::border_manager::window_border(self.hwnd) {
-            WindowsApi::raise_window(border.hwnd)?;
+        if let Some(border_info) = crate::border_manager::window_border(self.hwnd) {
+            WindowsApi::raise_window(border_info.border_hwnd)?;
         }
         Ok(())
     }
@@ -754,8 +756,8 @@ impl Window {
     /// it lowers it as well.
     pub fn lower(self) -> Result<()> {
         WindowsApi::lower_window(self.hwnd)?;
-        if let Some(border) = crate::border_manager::window_border(self.hwnd) {
-            WindowsApi::lower_window(border.hwnd)?;
+        if let Some(border_info) = crate::border_manager::window_border(self.hwnd) {
+            WindowsApi::lower_window(border_info.border_hwnd)?;
         }
         Ok(())
     }
