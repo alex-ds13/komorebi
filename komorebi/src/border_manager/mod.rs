@@ -377,6 +377,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                     }
                                 }
                             };
+                            println!("!!!!!!!!!!!!!!!!! MONOCLE: {:?}", &raw mut **border);
 
                             let new_focus_state = if monitor_idx != focused_monitor_idx {
                                 WindowKind::Unfocused
@@ -399,6 +400,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                 }
                                 border.tracking_hwnd = focused_window_hwnd;
                                 if !WindowsApi::is_window_visible(border.hwnd) {
+                                    println!("&&&&&& SHOWING BORDER!!!!");
                                     WindowsApi::restore_window(border.hwnd);
                                 }
                             }
@@ -483,6 +485,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                     }
                                 }
                             };
+                            println!("!!!!!!!!!!!!!!!!! CONTAINER: {:?}", &raw mut **border);
 
                             let last_focus_state = border.window_kind;
 
@@ -513,6 +516,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                 }
                                 border.tracking_hwnd = focused_window_hwnd;
                                 if !WindowsApi::is_window_visible(border.hwnd) {
+                                    println!("&&&&&& SHOWING BORDER!!!!");
                                     WindowsApi::restore_window(border.hwnd);
                                 }
                             }
@@ -540,9 +544,20 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                 border.invalidate();
                             }
 
+                            println!(
+                                "############# Border: new, inv, vis, last_f, new_f, rect -> {}, {}, {}, {:#?}, {}, {:#?}",
+                                new_border,
+                                should_invalidate,
+                                WindowsApi::is_window_visible(border.hwnd),
+                                last_focus_state,
+                                new_focus_state,
+                                rect,
+                            );
                             windows_borders.insert(focused_window_hwnd, id);
                         }
 
+                        println!("#### LEN: {}", windows_borders.len());
+                        println!("#### LEN: {}", borders.len());
                         {
                             for window in ws.floating_windows() {
                                 let mut new_border = false;
@@ -644,9 +659,21 @@ fn remove_border(
 ) -> color_eyre::Result<()> {
     if let Some(removed_border) = borders.remove(id) {
         windows_borders.remove(&removed_border.tracking_hwnd);
+        println!("%%%%%% DESTROYING BORDER");
         destroy_border(removed_border)?;
+        // let raw_pointer = Box::into_raw(removed_border);
+        // unsafe {
+        //     (*raw_pointer).destroy()?;
+        //     println!("UNSAFE! %%%%%% AFTER DESTROYING BORDER");
+        //     // std::ptr::drop_in_place(raw_pointer);
+        //     // println!("UNSAFE! %%%%%% AFTER PTR DROP");
+        //     // std::alloc::dealloc(raw_pointer as *mut u8, std::alloc::Layout::new::<Border>());
+        //     // println!("UNSAFE! %%%%%% AFTER PTR DEALLOC");
+        // }
+        println!("%%%%%% AFTER DESTROYING BORDER");
     }
 
+    println!("%%%%%% REMOVE BORDER END");
     Ok(())
 }
 
@@ -661,6 +688,11 @@ fn destroy_border(border: Box<Border>) -> color_eyre::Result<()> {
     let raw_pointer = Box::into_raw(border);
     unsafe {
         (*raw_pointer).destroy()?;
+        println!("UNSAFE! %%%%%% AFTER DESTROYING BORDER");
+        // std::ptr::drop_in_place(raw_pointer);
+        // println!("UNSAFE! %%%%%% AFTER PTR DROP");
+        // std::alloc::dealloc(raw_pointer as *mut u8, std::alloc::Layout::new::<Border>());
+        // println!("UNSAFE! %%%%%% AFTER PTR DEALLOC");
     }
     Ok(())
 }

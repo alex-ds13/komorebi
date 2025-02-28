@@ -193,6 +193,7 @@ impl Border {
             };
 
             let border_pointer = &raw mut border;
+            println!("!!!!!!!!!!!!!!!!! CREATE: {:?}", border_pointer);
             let hwnd =
                 WindowsApi::create_border_window(PCWSTR(name.as_ptr()), instance, border_pointer)?;
 
@@ -215,11 +216,13 @@ impl Border {
                     DispatchMessageW(&msg);
                 }
             }
+            println!("%%%%%% CREATE THREAD END");
 
             Ok(())
         });
 
         let mut border = border_receiver.recv()?;
+        println!("!!!!!!!!!!!!!!!!! RECV: {:?}", &raw mut *border);
 
         // I have literally no idea, apparently this is to get rid of the black pixels
         // around the edges of rounded corners? @lukeyou05 borrowed this from PowerToys
@@ -340,9 +343,11 @@ impl Border {
                     let mut border_pointer: *mut Border =
                         GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
+                    println!("!!!!!!!!!!!!!!!!! WM_CREATE: {:?}", border_pointer);
                     if border_pointer.is_null() {
                         let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
                         border_pointer = (*create_struct).lpCreateParams as *mut _;
+                        println!("!!!!!!!!!!!!!!!!! WM_CREATE_NULL: {:?}", border_pointer);
                         SetWindowLongPtrW(window, GWLP_USERDATA, border_pointer as _);
                     }
 
@@ -446,6 +451,7 @@ impl Border {
                         let border_pointer: *mut Border =
                             GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
+                        println!("!!!!!!!!!!!!!!!!! WM_PAINT: {:?}", border_pointer);
                         if border_pointer.is_null() {
                             return LRESULT(0);
                         }
@@ -530,8 +536,10 @@ impl Border {
                     LRESULT(0)
                 }
                 WM_DESTROY => {
+                    println!("%%%%%% WM_DESTROY");
                     SetWindowLongPtrW(window, GWLP_USERDATA, 0);
                     PostQuitMessage(0);
+                    println!("%%%%%% WM_DESTROY_END");
                     LRESULT(0)
                 }
                 _ => DefWindowProcW(window, message, wparam, lparam),
