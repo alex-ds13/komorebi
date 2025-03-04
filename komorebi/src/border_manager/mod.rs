@@ -4,6 +4,7 @@ mod border;
 use crate::core::BorderImplementation;
 use crate::core::BorderStyle;
 use crate::core::WindowKind;
+use crate::monitor::Monitor;
 use crate::ring::Ring;
 use crate::windows_api;
 use crate::workspace::Workspace;
@@ -62,7 +63,18 @@ lazy_static! {
     static ref WINDOWS_BORDERS: Mutex<HashMap<isize, String>> = Mutex::new(HashMap::new());
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BorderManager {
+    pub borders: HashMap<String, Box<Border>>,
+    pub windows_borders: HashMap<isize, String>,
+    pub previous_snapshot: Ring<Monitor>,
+    pub previous_pending_move_op: Option<(usize, usize, isize)>,
+    pub previous_is_paused: bool,
+    pub previous_notification: Option<Notification>,
+    pub previous_layer: WorkspaceLayer,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderTarget(pub ID2D1HwndRenderTarget);
 unsafe impl Send for RenderTarget {}
 
@@ -74,6 +86,7 @@ impl Deref for RenderTarget {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum Notification {
     Update(Option<isize>),
     ForceUpdate,
