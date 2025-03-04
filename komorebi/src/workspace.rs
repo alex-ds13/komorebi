@@ -961,7 +961,11 @@ impl Workspace {
         ))
     }
 
-    pub fn move_window_to_container(&mut self, target_container_idx: usize) -> Result<()> {
+    pub fn move_window_to_container(
+        &mut self,
+        target_container_idx: usize,
+        prepend: bool,
+    ) -> Result<()> {
         let focused_idx = self.focused_container_idx();
 
         let container = self
@@ -992,7 +996,11 @@ impl Workspace {
             .get_mut(adjusted_target_container_index)
             .ok_or_else(|| anyhow!("there is no container"))?;
 
-        target_container.add_window(window);
+        if prepend {
+            target_container.prepend_window(window);
+        } else {
+            target_container.add_window(window);
+        }
 
         self.focus_container(adjusted_target_container_index);
         self.focused_container_mut()

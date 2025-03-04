@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::ops::Add;
 
 use getset::Getters;
 use nanoid::nanoid;
@@ -125,6 +126,22 @@ impl Container {
     pub fn add_window(&mut self, window: Window) {
         self.windows_mut().push_back(window);
         self.focus_window(self.windows().len().saturating_sub(1));
+        let focused_window_idx = self.focused_window_idx();
+
+        for (i, window) in self.windows().iter().enumerate() {
+            if i != focused_window_idx {
+                window.hide();
+            }
+        }
+    }
+
+    pub fn prepend_window(&mut self, window: Window) {
+        self.windows_mut().push_front(window);
+        self.focus_window(
+            self.focused_window_idx()
+                .add(1)
+                .min(self.windows().len().saturating_sub(1)),
+        );
         let focused_window_idx = self.focused_window_idx();
 
         for (i, window) in self.windows().iter().enumerate() {

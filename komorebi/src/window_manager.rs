@@ -2614,7 +2614,7 @@ impl WindowManager {
 
         workspace.focus_container(workspace.containers().len().saturating_sub(1));
         while workspace.focused_container_idx() > 0 {
-            workspace.move_window_to_container(0)?;
+            workspace.move_window_to_container(0, false)?;
             workspace.focus_container(workspace.containers().len().saturating_sub(1));
         }
 
@@ -2710,10 +2710,11 @@ impl WindowManager {
             if let Some(current) = workspace.focused_container() {
                 if current.windows().len() > 1 && !target_container_is_stack {
                     workspace.focus_container(adjusted_new_index);
+                    let prepend = !changed_focus;
                     changed_focus = true;
-                    workspace.move_window_to_container(current_container_idx)?;
+                    workspace.move_window_to_container(current_container_idx, prepend)?;
                 } else {
-                    workspace.move_window_to_container(adjusted_new_index)?;
+                    workspace.move_window_to_container(adjusted_new_index, changed_focus)?;
                 }
             }
 

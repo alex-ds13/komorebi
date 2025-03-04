@@ -627,7 +627,8 @@ impl WindowManager {
                                 WindowContainerBehaviour::Append => {
                                     match workspace.container_idx_from_current_point() {
                                         Some(target_idx) => {
-                                            workspace.move_window_to_container(target_idx)?;
+                                            workspace
+                                                .move_window_to_container(target_idx, false)?;
                                             self.update_focused_workspace(false, false)?;
                                         }
                                         None => {
