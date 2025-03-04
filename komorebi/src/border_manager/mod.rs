@@ -195,6 +195,19 @@ pub fn listen_for_notifications(wm: Arc<Mutex<WindowManager>>) {
     });
 }
 
+impl BorderManager {
+    /// Check if some window with `hwnd` has a border attached to it, if it does returns the
+    /// `BorderInfo` related to it's border.
+    pub fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
+        self.windows_borders.get(&hwnd).and_then(|id| {
+            self.borders.get(id).map(|b| BorderInfo {
+                border_hwnd: b.hwnd,
+                window_kind: b.window_kind,
+            })
+        })
+    }
+}
+
 pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
     tracing::info!("listening");
 
