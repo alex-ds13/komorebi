@@ -724,8 +724,8 @@ impl WindowManager {
         )?;
 
         border_manager::send_notification(Some(event.hwnd()));
-        transparency_manager::send_notification();
-        stackbar_manager::send_notification();
+        // transparency_manager::send_notification();
+        // stackbar_manager::send_notification();
 
         // Too many spammy OBJECT_NAMECHANGE events from JetBrains IDEs
         if !matches!(
