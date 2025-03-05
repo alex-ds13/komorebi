@@ -18,6 +18,7 @@ use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+use uds_windows::UnixListener;
 use uds_windows::UnixStream;
 
 use crate::animation::ANIMATION_DURATION_GLOBAL;
@@ -99,6 +100,42 @@ use stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
 use stackbar_manager::STACKBAR_TAB_HEIGHT;
 use stackbar_manager::STACKBAR_TAB_WIDTH;
 use stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
+
+#[tracing::instrument]
+pub fn listen_for_commands_1(command_listener: UnixListener) {
+    std::thread::spawn(move || loop {
+        let listener = command_listener
+            .try_clone()
+            .expect("could not clone unix listener");
+        let _ = std::thread::spawn(move || {
+
+            tracing::info!("listening on komorebi.sock");
+            for client in listener.incoming() {
+                match client {
+                    Ok(stream) => {
+                        std::thread::spawn(move || {
+                            match stream.set_read_timeout(Some(Duration::from_secs(1))) {
+                                Ok(()) => {}
+                                Err(error) => tracing::error!("{}", error),
+                            }
+                            match read_commands_uds_1(stream) {
+                                Ok(()) => {}
+                                Err(error) => tracing::error!("{}", error),
+                            }
+                        });
+                    }
+                    Err(error) => {
+                        tracing::error!("{}", error);
+                        break;
+                    }
+                }
+            }
+        })
+        .join();
+
+        tracing::error!("restarting failed thread");
+    });
+}
 
 #[tracing::instrument]
 pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
@@ -2325,6 +2362,22 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
         tracing::info!("processed");
         Ok(())
     }
+}
+
+pub fn read_commands_uds_1(stream: UnixStream) -> Result<()> {
+    let reader = BufReader::new(stream.try_clone()?);
+    // TODO(raggi): while this processes more than one command, if there are
+    // replies there is no clearly defined protocol for framing yet - it's
+    // perhaps whole-json objects for now, but termination is signalled by
+    // socket shutdown.
+    let mut messages = vec![];
+    for line in reader.lines() {
+        let message = SocketMessage::from_str(&line?)?;
+        messages.push(message);
+    }
+    crate::runtime::send_message(crate::runtime::Message::Command(messages, stream));
+
+    Ok(())
 }
 
 pub fn read_commands_uds(wm: &Arc<Mutex<WindowManager>>, mut stream: UnixStream) -> Result<()> {
