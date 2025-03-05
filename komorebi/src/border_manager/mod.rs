@@ -740,7 +740,7 @@ fn window_kind_colour(focus_kind: WindowKind) -> u32 {
     }
 }
 
-pub fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
+fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
     unsafe {
         let _ = SendNotifyMessageW(border_hwnd, event, WPARAM(0), LPARAM(hwnd));
     }
