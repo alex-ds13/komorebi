@@ -23,6 +23,9 @@ use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -875,6 +878,17 @@ pub fn hide_border(tracking_hwnd: isize) {
             WindowsApi::hide_window(border_info.border_hwnd);
         }
     });
+}
+
+pub fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
+    unsafe {
+        let _ = SendNotifyMessageW(
+            border_hwnd,
+            event,
+            WPARAM(0),
+            LPARAM(hwnd),
+        );
+    }
 }
 
 #[derive(Debug, Copy, Clone, Display, Serialize, Deserialize, PartialEq)]
