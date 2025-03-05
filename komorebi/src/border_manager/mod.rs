@@ -29,7 +29,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::sync::OnceLock;
 use strum::Display;
 use windows::Win32::Foundation::HWND;
@@ -204,6 +203,37 @@ impl BorderManager {
                 window_kind: b.window_kind,
             })
         })
+    }
+
+    /// Destroys all known and unknown borders
+    pub fn destroy_all_borders(&mut self) -> color_eyre::Result<()> {
+        tracing::info!(
+            "purging known borders: {:?}",
+            self.borders.iter().map(|b| b.1.hwnd).collect::<Vec<_>>()
+        );
+
+        for (_, border) in self.borders.drain() {
+            let _ = destroy_border(border);
+        }
+
+        self.windows_borders.clear();
+
+        let mut remaining_hwnds = vec![];
+
+        WindowsApi::enum_windows(
+            Some(border_hwnds),
+            &mut remaining_hwnds as *mut Vec<isize> as isize,
+        )?;
+
+        if !remaining_hwnds.is_empty() {
+            tracing::info!("purging unknown borders: {:?}", remaining_hwnds);
+
+            for hwnd in remaining_hwnds {
+                let _ = destroy_border(Box::new(Border::from(hwnd)));
+            }
+        }
+
+        Ok(())
     }
 }
 
