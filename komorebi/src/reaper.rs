@@ -1,7 +1,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::border_manager;
+use crate::komorebi::Komorebi;
 use crate::notify_subscribers;
+use crate::runtime;
 use crate::winevent::WinEvent;
 use crate::NotificationEvent;
 use crate::Window;
@@ -24,6 +26,7 @@ lazy_static! {
         Arc::new(Mutex::new(HashMap::new()));
 }
 
+#[derive(Debug)]
 pub struct ReaperNotification(pub HashMap<isize, (usize, usize)>);
 
 static CHANNEL: OnceLock<(Sender<ReaperNotification>, Receiver<ReaperNotification>)> =
@@ -63,6 +66,109 @@ pub fn listen_for_notifications(
             }
         }
     });
+}
+
+pub fn listen_for_notifications_1(
+    known_hwnds: HashMap<isize, (usize, usize)>,
+) {
+    watch_for_orphans(known_hwnds);
+
+    std::thread::spawn(move || loop {
+        match handle_notifications_1() {
+            Ok(()) => {
+                tracing::warn!("restarting finished thread");
+            }
+            Err(error) => {
+                tracing::warn!("restarting failed thread: {}", error);
+            }
+        }
+    });
+}
+
+impl Komorebi {
+    pub fn handle_reaper_notification(
+        &mut self,
+        notification: ReaperNotification,
+    ) -> color_eyre::Result<()> {
+        let orphan_hwnds = notification.0;
+
+        let mut update_borders = false;
+
+        for (hwnd, (m_idx, w_idx)) in orphan_hwnds.iter() {
+            if let Some(monitor) = self.window_manager.monitors_mut().get_mut(*m_idx) {
+                let focused_workspace_idx = monitor.focused_workspace_idx();
+
+                if let Some(workspace) = monitor.workspaces_mut().get_mut(*w_idx) {
+                    // Remove orphan window
+                    if let Err(error) = workspace.remove_window(*hwnd) {
+                        tracing::warn!(
+                            "error reaping orphan window ({}) on monitor: {}, workspace: {}. Error: {}",
+                            hwnd,
+                            m_idx,
+                            w_idx,
+                            error,
+                        );
+                    }
+
+                    if focused_workspace_idx == *w_idx {
+                        // If this is not a focused workspace there is no need to update the
+                        // workspace or the borders. That will already be done when the user
+                        // changes to this workspace.
+                        workspace.update()?;
+                        update_borders = true;
+                    }
+                    tracing::info!(
+                        "reaped orphan window ({}) on monitor: {}, workspace: {}",
+                        hwnd,
+                        m_idx,
+                        w_idx,
+                    );
+                }
+            }
+
+            self.window_manager.known_hwnds.remove(hwnd);
+
+            let window = Window::from(*hwnd);
+            notify_subscribers(
+                crate::Notification {
+                    event: NotificationEvent::WindowManager(WindowManagerEvent::Destroy(
+                        WinEvent::ObjectDestroy,
+                        window,
+                    )),
+                    state: self.window_manager.as_ref().into(),
+                },
+                true,
+            )?;
+        }
+
+        if update_borders {
+            border_manager::send_notification(None);
+        }
+
+        // Save to file
+        let hwnd_json = DATA_DIR.join("komorebi.hwnd.json");
+        let file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(hwnd_json)?;
+
+        serde_json::to_writer_pretty(&file, &self.window_manager.known_hwnds.keys().collect::<Vec<_>>())?;
+
+        Ok(())
+    }
+}
+
+fn handle_notifications_1() -> color_eyre::Result<()> {
+    tracing::info!("listening");
+
+    let receiver = event_rx();
+
+    for notification in receiver {
+        runtime::send_message(runtime::Message::Reaper(notification));
+    }
+
+    Ok(())
 }
 
 fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
