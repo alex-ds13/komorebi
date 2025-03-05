@@ -33,7 +33,10 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use strum::Display;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 
 pub static BORDER_WIDTH: AtomicI32 = AtomicI32::new(8);
 pub static BORDER_OFFSET: AtomicI32 = AtomicI32::new(-1);
@@ -871,6 +874,17 @@ pub fn hide_border(tracking_hwnd: isize) {
             WindowsApi::hide_window(border_info.border_hwnd);
         }
     });
+}
+
+pub fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
+    unsafe {
+        let _ = SendNotifyMessageW(
+            border_hwnd,
+            event,
+            WPARAM(0),
+            LPARAM(hwnd),
+        );
+    }
 }
 
 #[derive(Debug, Copy, Clone, Display, Serialize, Deserialize, PartialEq)]
