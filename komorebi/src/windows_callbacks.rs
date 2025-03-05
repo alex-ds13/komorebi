@@ -1,19 +1,17 @@
 use std::collections::VecDeque;
 
-use crate::border_manager;
+use crate::border_manager::BorderMessage;
 use crate::container::Container;
+use crate::runtime;
 use crate::window::RuleDebug;
 use crate::window::Window;
 use crate::window_manager_event::WindowManagerEvent;
 use crate::windows_api::WindowsApi;
 use crate::winevent::WinEvent;
-use crate::winevent_listener;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
-use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
-use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
 use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_WINDOW;
@@ -98,6 +96,8 @@ pub extern "system" fn win_event_hook(
         Err(_) => return,
     };
 
+    let mut messages = vec![];
+
     // this forwards the message to the window's border when it moves or is destroyed
     // see border_manager/border.rs
     if matches!(
@@ -105,18 +105,7 @@ pub extern "system" fn win_event_hook(
         WinEvent::ObjectLocationChange | WinEvent::ObjectDestroy
     ) && !has_filtered_style(hwnd)
     {
-        let border_info = border_manager::window_border(hwnd.0 as isize);
-
-        if let Some(border_info) = border_info {
-            unsafe {
-                let _ = SendNotifyMessageW(
-                    border_info.hwnd(),
-                    event,
-                    WPARAM(0),
-                    LPARAM(hwnd.0 as isize),
-                );
-            }
-        }
+        messages.push(BorderMessage::PassEvent(hwnd.0 as isize, event).into());
     }
 
     // sometimes the border focus state and colors don't get updated because this event comes too
@@ -126,7 +115,7 @@ pub extern "system" fn win_event_hook(
     // so here we can just fire another event at the border manager when the system has finally
     // registered the new foreground window and this time the correct border colors will be applied
     if matches!(winevent, WinEvent::SystemForeground) && !has_filtered_style(hwnd) {
-        border_manager::send_notification(Some(hwnd.0 as isize));
+        messages.push(BorderMessage::Update(Some(hwnd.0 as isize)).into());
     }
 
     let event_type = match WindowManagerEvent::from_win_event(winevent, window) {
@@ -144,7 +133,6 @@ pub extern "system" fn win_event_hook(
         Some(event) => event,
     };
 
-    winevent_listener::event_tx()
-        .send(event_type)
-        .expect("could not send message on winevent_listener::event_tx");
+    messages.push(runtime::Message::Event(event_type));
+    runtime::batch_messages(messages);
 }
