@@ -13,8 +13,6 @@ use crate::WindowManager;
 use crate::WindowsApi;
 use border::border_hwnds;
 pub use border::Border;
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
 use crossbeam_utils::atomic::AtomicCell;
 use crossbeam_utils::atomic::AtomicConsume;
 use komorebi_themes::colour::Colour;
@@ -30,7 +28,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::OnceLock;
 use strum::Display;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
@@ -123,20 +120,6 @@ impl BorderInfo {
     }
 }
 
-static CHANNEL: OnceLock<(Sender<Notification>, Receiver<Notification>)> = OnceLock::new();
-
-pub fn channel() -> &'static (Sender<Notification>, Receiver<Notification>) {
-    CHANNEL.get_or_init(|| crossbeam_channel::bounded(50))
-}
-
-fn event_tx() -> Sender<Notification> {
-    channel().0.clone()
-}
-
-fn event_rx() -> Receiver<Notification> {
-    channel().1.clone()
-}
-
 pub fn window_border(hwnd: isize) -> Option<BorderInfo> {
     let id = WINDOWS_BORDERS.lock().get(&hwnd)?.clone();
     BORDER_STATE.lock().get(&id).map(|b| BorderInfo {
@@ -146,15 +129,11 @@ pub fn window_border(hwnd: isize) -> Option<BorderInfo> {
 }
 
 pub fn send_notification(hwnd: Option<isize>) {
-    if event_tx().try_send(Notification::Update(hwnd)).is_err() {
-        tracing::warn!("channel is full; dropping notification")
-    }
+    runtime::send_message(BorderMessage::Update(hwnd));
 }
 
 pub fn send_force_update() {
-    if event_tx().try_send(Notification::ForceUpdate).is_err() {
-        tracing::warn!("channel is full; dropping notification")
-    }
+    runtime::send_message(BorderMessage::ForceUpdate);
 }
 
 pub fn destroy_all_borders() -> color_eyre::Result<()> {
@@ -199,32 +178,6 @@ fn window_kind_colour(focus_kind: WindowKind) -> u32 {
         WindowKind::Monocle => MONOCLE.load(Ordering::Relaxed),
         WindowKind::Floating => FLOATING.load(Ordering::Relaxed),
     }
-}
-
-pub fn listen_for_notifications() {
-    std::thread::spawn(move || loop {
-        match handle_notifications() {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
-        }
-    });
-}
-
-pub fn handle_notifications() -> color_eyre::Result<()> {
-    tracing::info!("listening");
-
-    let receiver = event_rx();
-    event_tx().send(Notification::Update(None))?;
-
-    for notification in receiver {
-        crate::runtime::send_message(crate::runtime::Message::Border(notification));
-    }
-
-    Ok(())
 }
 
 impl BorderManager {
@@ -280,7 +233,7 @@ impl BorderManager {
         &mut self,
         wm: &mut WindowManager,
         tracking_hwnd: Option<isize>,
-        forced: bool,
+        forced_update: bool,
     ) -> color_eyre::Result<()> {
         // Check the wm state every time we receive a notification
         let is_paused = wm.is_paused;
@@ -300,11 +253,11 @@ impl BorderManager {
             .layer();
         let foreground_window = WindowsApi::foreground_window().unwrap_or_default();
 
-        let previous_snapshot = &mut self.previous_snapshot;
-        let previous_pending_move_op = &mut self.previous_pending_move_op;
-        let previous_is_paused = &mut self.previous_is_paused;
-        let previous_tracking_hwnd = &mut self.previous_tracking_hwnd;
-        let previous_layer = &mut self.previous_layer;
+        let previous_snapshot = &self.previous_snapshot;
+        let previous_pending_move_op = &self.previous_pending_move_op;
+        let previous_is_paused = &self.previous_is_paused;
+        let previous_tracking_hwnd = &self.previous_tracking_hwnd;
+        let previous_layer = &self.previous_layer;
 
         match IMPLEMENTATION.load() {
             BorderImplementation::Windows => {
@@ -364,7 +317,7 @@ impl BorderManager {
             BorderImplementation::Komorebi => {
                 let mut should_process_notification = true;
 
-                if !forced {
+                if !forced_update {
                     if monitors == *previous_snapshot
                         // handle the window dragging edge case
                         && pending_move_op == *previous_pending_move_op
@@ -396,7 +349,7 @@ impl BorderManager {
                                 // that no longer is the foreground window then we need to update that
                                 // border.
                                 (fw != &foreground_window
-                                 && window_border(*fw)
+                                 && self.window_border(*fw)
                                  .is_some_and(|b| b.window_kind == WindowKind::Floating))
                         });
 
@@ -405,7 +358,8 @@ impl BorderManager {
                     // komorebi it will have the same state has before, however the previously focused
                     // window changed its border to unfocused so now we need to update it again.
                     if !should_process_notification
-                        && window_border(tracking_hwnd.unwrap_or_default())
+                        && self
+                            .window_border(tracking_hwnd.unwrap_or_default())
                             .is_some_and(|b| b.window_kind == WindowKind::Unfocused)
                     {
                         should_process_notification = true;
@@ -444,7 +398,7 @@ impl BorderManager {
 
                     windows_borders.clear();
 
-                    *previous_is_paused = is_paused;
+                    self.previous_is_paused = is_paused;
                     return Ok(());
                 }
 
@@ -519,7 +473,7 @@ impl BorderManager {
 
                             if new_border {
                                 border.set_position(&rect, focused_window_hwnd)?;
-                            } else if forced {
+                            } else if forced_update {
                                 // Update the border brushes if there was a forced update
                                 // and this is not a new border (new border's already have
                                 // their brushes updated on creation)
@@ -657,10 +611,10 @@ impl BorderManager {
                             let should_invalidate = new_border
                                 || (last_focus_state != new_focus_state)
                                 || layer_changed
-                                || forced;
+                                || forced_update;
 
                             if should_invalidate {
-                                if forced && !new_border {
+                                if forced_update && !new_border {
                                     // Update the border brushes if there was a forced update
                                     // and this is not a new border (new border's already have
                                     // their brushes updated on creation)
@@ -713,10 +667,10 @@ impl BorderManager {
                             let should_invalidate = new_border
                                 || (last_focus_state != new_focus_state)
                                 || layer_changed
-                                || forced;
+                                || forced_update;
 
                             if should_invalidate {
-                                if forced && !new_border {
+                                if forced_update && !new_border {
                                     // Update the border brushes if there was a forced update
                                     // and this is not a new border (new border's already have
                                     // their brushes updated on creation)
@@ -733,11 +687,11 @@ impl BorderManager {
             }
         }
 
-        *previous_snapshot = monitors;
-        *previous_pending_move_op = pending_move_op;
-        *previous_is_paused = is_paused;
-        *previous_tracking_hwnd = tracking_hwnd;
-        *previous_layer = workspace_layer;
+        self.previous_snapshot = monitors;
+        self.previous_pending_move_op = pending_move_op;
+        self.previous_is_paused = is_paused;
+        self.previous_tracking_hwnd = tracking_hwnd;
+        self.previous_layer = workspace_layer;
 
         Ok(())
     }
