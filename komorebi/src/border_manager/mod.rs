@@ -788,21 +788,22 @@ pub fn destroy_all_borders() {
 
 /// Shows the border around window with `tracking_hwnd` if it exists
 pub fn show_border(tracking_hwnd: isize) {
-    std::thread::spawn(move || {
-        if let Some(border_info) = window_border(tracking_hwnd) {
-            WindowsApi::restore_window(border_info.border_hwnd);
-        }
-    });
+    runtime::send_message(BorderMessage::Show(tracking_hwnd));
 }
 
-/// Hides the border around window with `tracking_hwnd` if it exists, unless the border kind is a
-/// `Stack` border.
+/// Hides the border around window with `tracking_hwnd` if it exists
 pub fn hide_border(tracking_hwnd: isize) {
-    std::thread::spawn(move || {
-        if let Some(border_info) = window_border(tracking_hwnd) {
-            WindowsApi::hide_window(border_info.border_hwnd);
-        }
-    });
+    runtime::send_message(BorderMessage::Hide(tracking_hwnd));
+}
+
+/// Raises the border around window with `tracking_hwnd` if it exists
+pub fn raise_border(tracking_hwnd: isize) {
+    runtime::send_message(BorderMessage::Raise(tracking_hwnd));
+}
+
+/// Lowers the border around window with `tracking_hwnd` if it exists
+pub fn lower_border(tracking_hwnd: isize) {
+    runtime::send_message(BorderMessage::Lower(tracking_hwnd));
 }
 
 pub fn send_notification(hwnd: Option<isize>) {
