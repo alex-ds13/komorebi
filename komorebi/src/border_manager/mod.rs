@@ -6,6 +6,7 @@ use crate::core::BorderStyle;
 use crate::core::WindowKind;
 use crate::monitor::Monitor;
 use crate::ring::Ring;
+use crate::runtime;
 use crate::windows_api;
 use crate::workspace::Workspace;
 use crate::workspace::WorkspaceLayer;
@@ -103,6 +104,12 @@ pub enum BorderMessage {
     Hide(isize),
     Raise(isize),
     Lower(isize),
+}
+
+impl From<BorderMessage> for runtime::Message {
+    fn from(value: BorderMessage) -> Self {
+        runtime::Message::Border(value)
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
