@@ -1926,8 +1926,8 @@ impl WindowManager {
         )?;
 
         border_manager::send_notification(None);
-        transparency_manager::send_notification();
-        stackbar_manager::send_notification();
+        // transparency_manager::send_notification();
+        // stackbar_manager::send_notification();
 
         tracing::info!("processed");
         Ok(())
