@@ -21,9 +21,6 @@ use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
-use windows::Win32::Foundation::LPARAM;
-use windows::Win32::Foundation::WPARAM;
-use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -33,7 +30,10 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use strum::Display;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 
 pub static BORDER_WIDTH: AtomicI32 = AtomicI32::new(8);
 pub static BORDER_OFFSET: AtomicI32 = AtomicI32::new(-1);
@@ -90,6 +90,7 @@ pub struct Notification(pub Option<isize>);
 pub enum BorderMessage {
     Update(Option<isize>),
     PassEvent(isize, u32),
+    Delete(isize),
     Show(isize),
     Hide(isize),
     Raise(isize),
@@ -115,33 +116,6 @@ impl BorderInfo {
     }
 }
 
-pub fn window_border(hwnd: isize) -> Option<BorderInfo> {
-    WINDOWS_BORDERS.lock().get(&hwnd).and_then(|id| {
-        BORDER_STATE.lock().get(id).map(|b| BorderInfo {
-            border_hwnd: b.hwnd,
-            window_kind: b.window_kind,
-        })
-    })
-}
-
-pub fn send_notification(hwnd: Option<isize>) {
-    runtime::send_message(BorderMessage::Update(hwnd));
-}
-
-pub fn destroy_all_borders() {
-    runtime::send_message(BorderMessage::DestroyAll);
-}
-
-fn window_kind_colour(focus_kind: WindowKind) -> u32 {
-    match focus_kind {
-        WindowKind::Unfocused => UNFOCUSED.load(Ordering::Relaxed),
-        WindowKind::Single => FOCUSED.load(Ordering::Relaxed),
-        WindowKind::Stack => STACK.load(Ordering::Relaxed),
-        WindowKind::Monocle => MONOCLE.load(Ordering::Relaxed),
-        WindowKind::Floating => FLOATING.load(Ordering::Relaxed),
-    }
-}
-
 impl BorderManager {
     pub fn update(
         &mut self,
@@ -149,20 +123,26 @@ impl BorderManager {
         message: BorderMessage,
     ) -> color_eyre::Result<()> {
         match message {
-            BorderMessage::Update(tracking_hwnd) => {
-                self.handle_border_update(wm, tracking_hwnd)
-            }
+            BorderMessage::Update(tracking_hwnd) => self.handle_border_update(wm, tracking_hwnd),
             BorderMessage::PassEvent(tracking_hwnd, event) => {
                 let border_info = self.window_border(tracking_hwnd);
 
                 if let Some(border_info) = border_info {
-                    notify_border(
-                        border_info.hwnd(),
-                        event,
-                        tracking_hwnd,
-                    );
+                    notify_border(border_info.hwnd(), event, tracking_hwnd);
                 }
 
+                Ok(())
+            }
+            BorderMessage::Delete(tracking_hwnd) => {
+                let id = self
+                    .windows_borders
+                    .get(&tracking_hwnd)
+                    .cloned()
+                    .unwrap_or_default();
+
+                if let Err(error) = self.remove_border(&id) {
+                    tracing::error!("Failed to delete border: {}", error);
+                }
                 Ok(())
             }
             BorderMessage::Show(tracking_hwnd) => {
@@ -223,6 +203,7 @@ impl BorderManager {
         let previous_is_paused = &self.previous_is_paused;
         let previous_tracking_hwnd = &self.previous_tracking_hwnd;
         let previous_layer = &self.previous_layer;
+        let layer_changed = *previous_layer != workspace_layer;
 
         match IMPLEMENTATION.load() {
             BorderImplementation::Windows => {
@@ -317,7 +298,8 @@ impl BorderManager {
                 // komorebi it will have the same state has before, however the previously focused
                 // window changed its border to unfocused so now we need to update it again.
                 if !should_process_notification
-                    && self.window_border(tracking_hwnd.unwrap_or_default())
+                    && self
+                        .window_border(tracking_hwnd.unwrap_or_default())
                         .is_some_and(|b| b.window_kind == WindowKind::Unfocused)
                 {
                     should_process_notification = true;
@@ -365,12 +347,7 @@ impl BorderManager {
                         // Workspaces with tiling disabled don't have borders
                         if !ws.tile() {
                             // Remove all borders on this monitor
-                            remove_borders(
-                                &mut borders,
-                                &mut windows_borders,
-                                monitor_idx,
-                                |_, _| true,
-                            )?;
+                            self.remove_borders(monitor_idx, |_, _| true)?;
 
                             continue 'monitors;
                         }
@@ -438,12 +415,7 @@ impl BorderManager {
 
                             let border_hwnd = border.hwnd;
                             // Remove all borders on this monitor except monocle
-                            remove_borders(
-                                &mut borders,
-                                &mut windows_borders,
-                                monitor_idx,
-                                |_, b| border_hwnd != b.hwnd,
-                            )?;
+                            self.remove_borders(monitor_idx, |_, b| border_hwnd != b.hwnd)?;
 
                             continue 'monitors;
                         }
@@ -456,12 +428,7 @@ impl BorderManager {
 
                         if is_maximized {
                             // Remove all borders on this monitor
-                            remove_borders(
-                                &mut borders,
-                                &mut windows_borders,
-                                monitor_idx,
-                                |_, _| true,
-                            )?;
+                            self.remove_borders(monitor_idx, |_, _| true)?;
 
                             continue 'monitors;
                         }
@@ -478,12 +445,9 @@ impl BorderManager {
                         }
 
                         // Remove any borders not associated with the focused workspace
-                        remove_borders(
-                            &mut borders,
-                            &mut windows_borders,
-                            monitor_idx,
-                            |id, _| !container_and_floating_window_ids.contains(id),
-                        )?;
+                        self.remove_borders(monitor_idx, |id, _| {
+                            !container_and_floating_window_ids.contains(id)
+                        })?;
 
                         'containers: for (idx, c) in ws.containers().iter().enumerate() {
                             let focused_window_hwnd =
@@ -548,13 +512,11 @@ impl BorderManager {
                             let rect = match WindowsApi::window_rect(focused_window_hwnd) {
                                 Ok(rect) => rect,
                                 Err(_) => {
-                                    remove_border(c.id(), &mut borders, &mut windows_borders)?;
+                                    self.remove_border(c.id())?;
                                     continue 'containers;
                                 }
                             };
                             border.window_rect = rect;
-
-                            let layer_changed = *previous_layer != workspace_layer;
 
                             let should_invalidate = new_border
                                 || (last_focus_state != new_focus_state)
@@ -602,8 +564,6 @@ impl BorderManager {
 
                             let rect = WindowsApi::window_rect(window.hwnd)?;
                             border.window_rect = rect;
-
-                            let layer_changed = *previous_layer != workspace_layer;
 
                             let should_invalidate = new_border
                                 || (last_focus_state != new_focus_state)
@@ -671,51 +631,46 @@ impl BorderManager {
 
         Ok(())
     }
-}
 
-/// Removes all borders from monitor with index `monitor_idx` filtered by
-/// `condition`. This condition is a function that will take a reference to
-/// the container id and the border and returns a bool, if true that border
-/// will be removed.
-fn remove_borders(
-    borders: &mut HashMap<String, Box<Border>>,
-    windows_borders: &mut HashMap<isize, String>,
-    monitor_idx: usize,
-    condition: impl Fn(&String, &Border) -> bool,
-) -> color_eyre::Result<()> {
-    let mut to_remove = vec![];
-    for (id, border) in borders.iter() {
-        // if border is on this monitor
-        if border.monitor_idx.is_some_and(|idx| idx == monitor_idx)
-            // and the condition applies
-            && condition(id, border)
-            // and the border is visible (we don't remove hidden borders)
-            && WindowsApi::is_window_visible(border.hwnd)
-        {
-            // we mark it to be removed
-            to_remove.push(id.clone());
+    /// Removes all borders from monitor with index `monitor_idx` filtered by
+    /// `condition`. This condition is a function that will take a reference to
+    /// the container id and the border and returns a bool, if true that border
+    /// will be removed.
+    fn remove_borders(
+        &mut self,
+        monitor_idx: usize,
+        condition: impl Fn(&String, &Border) -> bool,
+    ) -> color_eyre::Result<()> {
+        let mut to_remove = vec![];
+        for (id, border) in self.borders.iter() {
+            // if border is on this monitor
+            if border.monitor_idx.is_some_and(|idx| idx == monitor_idx)
+                // and the condition applies
+                && condition(id, border)
+                    // and the border is visible (we don't remove hidden borders)
+                    && WindowsApi::is_window_visible(border.hwnd)
+            {
+                // we mark it to be removed
+                to_remove.push(id.clone());
+            }
         }
+
+        for id in &to_remove {
+            self.remove_border(id)?;
+        }
+
+        Ok(())
     }
 
-    for id in &to_remove {
-        remove_border(id, borders, windows_borders)?;
+    /// Removes the border with `id` and all its related info from all maps
+    fn remove_border(&mut self, id: &str) -> color_eyre::Result<()> {
+        if let Some(removed_border) = self.borders.remove(id) {
+            self.windows_borders.remove(&removed_border.tracking_hwnd);
+            destroy_border(removed_border)?;
+        }
+
+        Ok(())
     }
-
-    Ok(())
-}
-
-/// Removes the border with `id` and all its related info from all maps
-fn remove_border(
-    id: &str,
-    borders: &mut HashMap<String, Box<Border>>,
-    windows_borders: &mut HashMap<isize, String>,
-) -> color_eyre::Result<()> {
-    if let Some(removed_border) = borders.remove(id) {
-        windows_borders.remove(&removed_border.tracking_hwnd);
-        destroy_border(removed_border)?;
-    }
-
-    Ok(())
 }
 
 /// IMPORTANT: BEWARE when changing this function. We need to make sure that we don't let the
@@ -735,22 +690,11 @@ fn destroy_border(border: Box<Border>) -> color_eyre::Result<()> {
 
 /// Removes the border around window with `tracking_hwnd` if it exists
 pub fn delete_border(tracking_hwnd: isize) {
-    std::thread::spawn(move || {
-        let id = {
-            WINDOWS_BORDERS
-                .lock()
-                .get(&tracking_hwnd)
-                .cloned()
-                .unwrap_or_default()
-        };
+    runtime::send_message(BorderMessage::Delete(tracking_hwnd));
+}
 
-        let mut borders = BORDER_STATE.lock();
-        let mut windows_borders = WINDOWS_BORDERS.lock();
-
-        if let Err(error) = remove_border(&id, &mut borders, &mut windows_borders) {
-            tracing::error!("Failed to delete border: {}", error);
-        }
-    });
+pub fn destroy_all_borders() {
+    runtime::send_message(BorderMessage::DestroyAll);
 }
 
 /// Shows the border around window with `tracking_hwnd` if it exists
@@ -772,14 +716,32 @@ pub fn hide_border(tracking_hwnd: isize) {
     });
 }
 
+pub fn send_notification(hwnd: Option<isize>) {
+    runtime::send_message(BorderMessage::Update(hwnd));
+}
+
+pub fn window_border(hwnd: isize) -> Option<BorderInfo> {
+    WINDOWS_BORDERS.lock().get(&hwnd).and_then(|id| {
+        BORDER_STATE.lock().get(id).map(|b| BorderInfo {
+            border_hwnd: b.hwnd,
+            window_kind: b.window_kind,
+        })
+    })
+}
+
+fn window_kind_colour(focus_kind: WindowKind) -> u32 {
+    match focus_kind {
+        WindowKind::Unfocused => UNFOCUSED.load(Ordering::Relaxed),
+        WindowKind::Single => FOCUSED.load(Ordering::Relaxed),
+        WindowKind::Stack => STACK.load(Ordering::Relaxed),
+        WindowKind::Monocle => MONOCLE.load(Ordering::Relaxed),
+        WindowKind::Floating => FLOATING.load(Ordering::Relaxed),
+    }
+}
+
 pub fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
     unsafe {
-        let _ = SendNotifyMessageW(
-            border_hwnd,
-            event,
-            WPARAM(0),
-            LPARAM(hwnd),
-        );
+        let _ = SendNotifyMessageW(border_hwnd, event, WPARAM(0), LPARAM(hwnd));
     }
 }
 
