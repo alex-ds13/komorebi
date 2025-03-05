@@ -1306,7 +1306,6 @@ impl StaticConfig {
             already_moved_window_handles: Arc::new(Mutex::new(HashSet::new())),
             uncloack_to_ignore: 0,
             known_hwnds: HashMap::new(),
-            border_manager: Default::default(),
         };
 
         match value.focus_follows_mouse {
