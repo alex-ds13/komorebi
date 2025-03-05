@@ -19,7 +19,6 @@ use crossbeam_utils::atomic::AtomicConsume;
 use komorebi_themes::colour::Colour;
 use komorebi_themes::colour::Rgb;
 use lazy_static::lazy_static;
-use parking_lot::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::hash_map::Entry;
@@ -58,11 +57,6 @@ lazy_static! {
         AtomicU32::new(u32::from(Colour::Rgb(Rgb::new(245, 245, 165))));
 }
 
-lazy_static! {
-    static ref BORDER_STATE: Mutex<HashMap<String, Box<Border>>> = Mutex::new(HashMap::new());
-    static ref WINDOWS_BORDERS: Mutex<HashMap<isize, String>> = Mutex::new(HashMap::new());
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BorderManager {
     pub borders: HashMap<String, Box<Border>>,
@@ -84,12 +78,6 @@ impl Deref for RenderTarget {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Notification {
-    Update(Option<isize>),
-    ForceUpdate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -304,7 +292,7 @@ impl BorderManager {
                     }
 
                     // handle the retile edge case
-                    if !should_process_notification && BORDER_STATE.lock().is_empty() {
+                    if !should_process_notification && self.borders.is_empty() {
                         should_process_notification = true;
                     }
 
@@ -351,20 +339,17 @@ impl BorderManager {
                     return Ok(());
                 }
 
-                let mut borders = BORDER_STATE.lock();
-                let mut windows_borders = WINDOWS_BORDERS.lock();
-
                 // If borders are disabled
                 if !BORDER_ENABLED.load_consume()
                     // Or if the wm is paused
                     || is_paused
                 {
                     // Destroy the borders we know about
-                    for (_, border) in borders.drain() {
+                    for (_, border) in self.borders.drain() {
                         destroy_border(border)?;
                     }
 
-                    windows_borders.clear();
+                    self.windows_borders.clear();
 
                     self.previous_is_paused = is_paused;
                     return Ok(());
@@ -387,7 +372,7 @@ impl BorderManager {
                             let focused_window_hwnd =
                                 monocle.focused_window().map(|w| w.hwnd).unwrap_or_default();
                             let id = monocle.id().clone();
-                            let border = match borders.entry(id.clone()) {
+                            let border = match self.borders.entry(id.clone()) {
                                 Entry::Occupied(entry) => entry.into_mut(),
                                 Entry::Vacant(entry) => {
                                     if let Ok(border) = Border::create(
@@ -413,13 +398,13 @@ impl BorderManager {
                             // Update the borders tracking_hwnd in case it changed and remove the
                             // old `tracking_hwnd` from `WINDOWS_BORDERS` if needed.
                             if border.tracking_hwnd != focused_window_hwnd {
-                                if let Some(previous) = windows_borders.get(&border.tracking_hwnd) {
+                                if let Some(previous) = self.windows_borders.get(&border.tracking_hwnd) {
                                     // Only remove the border from `windows_borders` if it
                                     // still corresponds to the same border, if doesn't then
                                     // it means it was already updated by another border for
                                     // that window and in that case we don't want to remove it.
                                     if previous == &id {
-                                        windows_borders.remove(&border.tracking_hwnd);
+                                        self.windows_borders.remove(&border.tracking_hwnd);
                                     }
                                 }
                                 border.tracking_hwnd = focused_window_hwnd;
@@ -445,7 +430,7 @@ impl BorderManager {
 
                             border.invalidate();
 
-                            windows_borders.insert(focused_window_hwnd, id);
+                            self.windows_borders.insert(focused_window_hwnd, id);
 
                             let border_hwnd = border.hwnd;
 
@@ -509,7 +494,7 @@ impl BorderManager {
 
                             // Get the border entry for this container from the map or create one
                             let mut new_border = false;
-                            let border = match borders.entry(id.clone()) {
+                            let border = match self.borders.entry(id.clone()) {
                                 Entry::Occupied(entry) => entry.into_mut(),
                                 Entry::Vacant(entry) => {
                                     if let Ok(border) =
@@ -545,13 +530,13 @@ impl BorderManager {
                             // Update the borders `tracking_hwnd` in case it changed and remove the
                             // old `tracking_hwnd` from `WINDOWS_BORDERS` if needed.
                             if border.tracking_hwnd != focused_window_hwnd {
-                                if let Some(previous) = windows_borders.get(&border.tracking_hwnd) {
+                                if let Some(previous) = self.windows_borders.get(&border.tracking_hwnd) {
                                     // Only remove the border from `windows_borders` if it
                                     // still corresponds to the same border, if doesn't then
                                     // it means it was already updated by another border for
                                     // that window and in that case we don't want to remove it.
                                     if previous == &id {
-                                        windows_borders.remove(&border.tracking_hwnd);
+                                        self.windows_borders.remove(&border.tracking_hwnd);
                                     }
                                 }
                                 border.tracking_hwnd = focused_window_hwnd;
@@ -591,7 +576,7 @@ impl BorderManager {
                                 border.invalidate();
                             }
 
-                            windows_borders.insert(focused_window_hwnd, id);
+                            self.windows_borders.insert(focused_window_hwnd, id);
                         }
 
                         self.handle_floating_borders(
