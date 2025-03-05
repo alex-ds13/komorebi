@@ -693,6 +693,7 @@ pub fn delete_border(tracking_hwnd: isize) {
     runtime::send_message(BorderMessage::Delete(tracking_hwnd));
 }
 
+/// Destroys all known and unknown borders
 pub fn destroy_all_borders() {
     runtime::send_message(BorderMessage::DestroyAll);
 }
@@ -717,17 +718,10 @@ pub fn lower_border(tracking_hwnd: isize) {
     runtime::send_message(BorderMessage::Lower(tracking_hwnd));
 }
 
+/// Sends an `BorderMessage::Update` to the runtime to update all the borders using the optional
+/// `hwnd` as the tracking_hwnd that might have triggered the update
 pub fn send_notification(hwnd: Option<isize>) {
     runtime::send_message(BorderMessage::Update(hwnd));
-}
-
-pub fn window_border(hwnd: isize) -> Option<BorderInfo> {
-    WINDOWS_BORDERS.lock().get(&hwnd).and_then(|id| {
-        BORDER_STATE.lock().get(id).map(|b| BorderInfo {
-            border_hwnd: b.hwnd,
-            window_kind: b.window_kind,
-        })
-    })
 }
 
 fn window_kind_colour(focus_kind: WindowKind) -> u32 {
