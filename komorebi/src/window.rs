@@ -753,9 +753,7 @@ impl Window {
     /// it raises it as well.
     pub fn raise(self) -> Result<()> {
         WindowsApi::raise_window(self.hwnd)?;
-        if let Some(border_info) = crate::border_manager::window_border(self.hwnd) {
-            WindowsApi::raise_window(border_info.border_hwnd)?;
-        }
+        border_manager::raise_border(self.hwnd);
         Ok(())
     }
 
@@ -765,9 +763,7 @@ impl Window {
     /// it lowers it as well.
     pub fn lower(self) -> Result<()> {
         WindowsApi::lower_window(self.hwnd)?;
-        if let Some(border_info) = crate::border_manager::window_border(self.hwnd) {
-            WindowsApi::lower_window(border_info.border_hwnd)?;
-        }
+        border_manager::lower_border(self.hwnd);
         Ok(())
     }
 
