@@ -21,6 +21,7 @@ use crossbeam_utils::Backoff;
 use komorebi::animation::AnimationEngine;
 use komorebi::animation::ANIMATION_ENABLED_GLOBAL;
 use komorebi::animation::ANIMATION_ENABLED_PER_ANIMATION;
+use komorebi::komorebi::Komorebi;
 #[cfg(feature = "deadlock_detection")]
 use parking_lot::deadlock;
 use parking_lot::Mutex;
@@ -220,28 +221,28 @@ fn main() -> Result<()> {
 
     std::fs::create_dir_all(&*DATA_DIR)?;
 
-    let wm = if let Some(config) = &static_config {
+    let mut wm = if let Some(config) = &static_config {
         tracing::info!(
             "creating window manager from static configuration file: {}",
             config.display()
         );
 
-        Arc::new(Mutex::new(StaticConfig::preload(
+        StaticConfig::preload(
             config,
             winevent_listener::event_rx(),
             None,
-        )?))
+        )?
     } else {
-        Arc::new(Mutex::new(WindowManager::new(
+        WindowManager::new(
             winevent_listener::event_rx(),
             None,
-        )?))
+        )?
     };
 
-    wm.lock().init()?;
+    wm.init()?;
 
     if let Some(config) = &static_config {
-        StaticConfig::postload(config, &wm)?;
+        StaticConfig::postload(config, &mut wm)?;
     }
 
     if !opts.await_configuration && !INITIAL_CONFIGURATION_LOADED.load(Ordering::SeqCst) {
@@ -263,7 +264,7 @@ fn main() -> Result<()> {
 
     if !opts.clean_state && dumped_state.is_file() {
         if let Ok(state) = serde_json::from_str(&std::fs::read_to_string(&dumped_state)?) {
-            wm.lock().apply_state(state);
+            wm.apply_state(state);
         } else {
             tracing::warn!(
                 "cannot apply state from {}; state struct is not up to date",
@@ -272,27 +273,45 @@ fn main() -> Result<()> {
         }
     }
 
-    wm.lock().retile_all(false)?;
+    let known_hwnds = wm.known_hwnds.clone();
+    let command_listener = wm.command_listener
+        .try_clone()
+        .expect("could not clone unix listener");
 
-    border_manager::listen_for_notifications(wm.clone());
-    stackbar_manager::listen_for_notifications(wm.clone());
-    transparency_manager::listen_for_notifications(wm.clone());
-    monitor_reconciliator::listen_for_notifications(wm.clone())?;
-    reaper::listen_for_notifications(wm.clone(), wm.lock().known_hwnds.clone());
-    focus_manager::listen_for_notifications(wm.clone());
-    theme_manager::listen_for_notifications();
+    reaper::listen_for_notifications_1(known_hwnds);
+    komorebi::process_command::listen_for_commands_1(command_listener);
 
-    listen_for_commands(wm.clone());
+    wm.retile_all(false)?;
 
-    if let Some(port) = opts.tcp_port {
-        listen_for_commands_tcp(wm.clone(), port);
-    }
+    let mut komorebi = Komorebi {
+        window_manager: wm,
+        border_manager: Default::default(),
+    };
 
-    listen_for_events(wm.clone());
+    // Start the komorebi runtime
+    komorebi.run();
 
-    if CUSTOM_FFM.load(Ordering::SeqCst) {
-        listen_for_movements(wm.clone());
-    }
+
+    // border_manager::listen_for_notifications(wm.clone());
+    // stackbar_manager::listen_for_notifications(wm.clone());
+    // transparency_manager::listen_for_notifications(wm.clone());
+    // workspace_reconciliator::listen_for_notifications(wm.clone());
+    // monitor_reconciliator::listen_for_notifications(wm.clone())?;
+    // reaper::listen_for_notifications(wm.clone(), wm.lock().known_hwnds.clone());
+    // focus_manager::listen_for_notifications(wm.clone());
+    // theme_manager::listen_for_notifications();
+
+    // listen_for_commands(wm.clone());
+    //
+    // if let Some(port) = opts.tcp_port {
+    //     listen_for_commands_tcp(wm.clone(), port);
+    // }
+    //
+    // listen_for_events(wm.clone());
+
+    // if CUSTOM_FFM.load(Ordering::SeqCst) {
+    //     listen_for_movements(wm.clone());
+    // }
 
     let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
     ctrlc::set_handler(move || {
@@ -307,12 +326,12 @@ fn main() -> Result<()> {
 
     tracing::error!("received ctrl-c, restoring all hidden windows and terminating process");
 
-    let state = State::from(&*wm.lock());
+    let state = State::from(&komorebi.window_manager);
     std::fs::write(dumped_state, serde_json::to_string_pretty(&state)?)?;
 
     ANIMATION_ENABLED_PER_ANIMATION.lock().clear();
     ANIMATION_ENABLED_GLOBAL.store(false, Ordering::SeqCst);
-    wm.lock().restore_all_windows(false)?;
+    komorebi.window_manager.restore_all_windows(false)?;
     AnimationEngine::wait_for_all_animations();
 
     if WindowsApi::focus_follows_mouse()? {
