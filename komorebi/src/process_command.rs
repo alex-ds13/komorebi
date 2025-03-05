@@ -800,11 +800,11 @@ impl WindowManager {
                 }
             }
             SocketMessage::Retile => {
-                border_manager::destroy_all_borders()?;
+                border_manager::destroy_all_borders();
                 self.retile_all(false)?
             }
             SocketMessage::RetileWithResizeDimensions => {
-                border_manager::destroy_all_borders()?;
+                border_manager::destroy_all_borders();
                 self.retile_all(true)?
             }
             SocketMessage::FlipLayout(layout_flip) => self.flip_layout(layout_flip)?,
@@ -1780,7 +1780,7 @@ impl WindowManager {
                 if !enable {
                     match IMPLEMENTATION.load() {
                         BorderImplementation::Komorebi => {
-                            border_manager::destroy_all_borders()?;
+                            border_manager::destroy_all_borders();
                         }
                         BorderImplementation::Windows => {
                             self.remove_all_accents()?;
@@ -1800,7 +1800,7 @@ impl WindowManager {
                             self.remove_all_accents()?;
                         }
                         BorderImplementation::Windows => {
-                            border_manager::destroy_all_borders()?;
+                            border_manager::destroy_all_borders();
                         }
                     }
 
