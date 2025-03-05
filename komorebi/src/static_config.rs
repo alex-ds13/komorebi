@@ -1336,9 +1336,8 @@ impl StaticConfig {
         Ok(wm)
     }
 
-    pub fn postload(path: &PathBuf, wm: &Arc<Mutex<WindowManager>>) -> Result<()> {
+    pub fn postload(path: &PathBuf, wm: &mut WindowManager) -> Result<()> {
         let mut value = Self::read(path)?;
-        let mut wm = wm.lock();
 
         let configs_with_preference: Vec<_> =
             DISPLAY_INDEX_PREFERENCES.read().keys().copied().collect();
