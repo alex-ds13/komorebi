@@ -106,7 +106,6 @@ pub fn listen_for_commands_1(command_listener: UnixListener) {
             .try_clone()
             .expect("could not clone unix listener");
         let _ = std::thread::spawn(move || {
-
             tracing::info!("listening on komorebi.sock");
             for client in listener.incoming() {
                 match client {
@@ -960,12 +959,12 @@ impl WindowManager {
                 }
             }
             SocketMessage::Retile => {
-                border_manager::destroy_all_borders()?;
+                border_manager::destroy_all_borders();
                 force_update_borders = true;
                 self.retile_all(false)?
             }
             SocketMessage::RetileWithResizeDimensions => {
-                border_manager::destroy_all_borders()?;
+                border_manager::destroy_all_borders();
                 force_update_borders = true;
                 self.retile_all(true)?
             }
@@ -2054,7 +2053,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
                 if !enable {
                     match IMPLEMENTATION.load() {
                         BorderImplementation::Komorebi => {
-                            border_manager::destroy_all_borders()?;
+                            border_manager::destroy_all_borders();
                         }
                         BorderImplementation::Windows => {
                             self.remove_all_accents()?;
@@ -2077,7 +2076,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
                             force_update_borders = true;
                         }
                         BorderImplementation::Windows => {
-                            border_manager::destroy_all_borders()?;
+                            border_manager::destroy_all_borders();
                         }
                     }
                 }
