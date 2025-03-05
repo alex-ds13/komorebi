@@ -185,7 +185,7 @@ impl BorderManager {
         }
     }
 
-    pub fn handle_border_update(
+    fn handle_border_update(
         &mut self,
         wm: &mut WindowManager,
         tracking_hwnd: Option<isize>,
@@ -617,7 +617,7 @@ impl BorderManager {
 
     /// Check if some window with `hwnd` has a border attached to it, if it does returns the
     /// `BorderInfo` related to it's border.
-    pub fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
+    fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
         self.windows_borders.get(&hwnd).and_then(|id| {
             self.borders.get(id).map(|b| BorderInfo {
                 border_hwnd: b.hwnd,
@@ -627,7 +627,7 @@ impl BorderManager {
     }
 
     /// Destroys all known and unknown borders
-    pub fn destroy_all_borders(&mut self) -> color_eyre::Result<()> {
+    fn destroy_all_borders(&mut self) -> color_eyre::Result<()> {
         tracing::info!(
             "purging known borders: {:?}",
             self.borders.iter().map(|b| b.1.hwnd).collect::<Vec<_>>()
