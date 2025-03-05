@@ -101,6 +101,7 @@ pub enum BorderMessage {
     Hide(isize),
     Raise(isize),
     Lower(isize),
+    DestroyAll,
 }
 
 impl From<BorderMessage> for runtime::Message {
@@ -137,37 +138,8 @@ pub fn send_force_update() {
     runtime::send_message(BorderMessage::ForceUpdate);
 }
 
-pub fn destroy_all_borders() -> color_eyre::Result<()> {
-    let mut borders = BORDER_STATE.lock();
-    tracing::info!(
-        "purging known borders: {:?}",
-        borders.iter().map(|b| b.1.hwnd).collect::<Vec<_>>()
-    );
-
-    for (_, border) in borders.drain() {
-        let _ = destroy_border(border);
-    }
-
-    drop(borders);
-
-    WINDOWS_BORDERS.lock().clear();
-
-    let mut remaining_hwnds = vec![];
-
-    WindowsApi::enum_windows(
-        Some(border_hwnds),
-        &mut remaining_hwnds as *mut Vec<isize> as isize,
-    )?;
-
-    if !remaining_hwnds.is_empty() {
-        tracing::info!("purging unknown borders: {:?}", remaining_hwnds);
-
-        for hwnd in remaining_hwnds {
-            let _ = destroy_border(Box::new(Border::from(hwnd)));
-        }
-    }
-
-    Ok(())
+pub fn destroy_all_borders() {
+    runtime::send_message(BorderMessage::DestroyAll);
 }
 
 fn window_kind_colour(focus_kind: WindowKind) -> u32 {
@@ -227,6 +199,7 @@ impl BorderManager {
                     Ok(())
                 }
             }
+            BorderMessage::DestroyAll => self.destroy_all_borders(),
         }
     }
 

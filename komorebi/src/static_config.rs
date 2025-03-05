@@ -1060,7 +1060,7 @@ impl StaticConfig {
             IMPLEMENTATION.store(self.border_implementation.unwrap_or_default());
             match IMPLEMENTATION.load() {
                 BorderImplementation::Komorebi => {
-                    border_manager::destroy_all_borders()?;
+                    border_manager::destroy_all_borders();
                 }
                 BorderImplementation::Windows => {
                     // TODO: figure out how to call wm.remove_all_accents here
