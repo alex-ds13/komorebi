@@ -69,7 +69,7 @@ pub struct BorderManager {
     pub previous_snapshot: Ring<Monitor>,
     pub previous_pending_move_op: Option<(usize, usize, isize)>,
     pub previous_is_paused: bool,
-    pub previous_notification: Option<Notification>,
+    pub previous_tracking_hwnd: Option<isize>,
     pub previous_layer: WorkspaceLayer,
 }
 
@@ -87,6 +87,16 @@ impl Deref for RenderTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Notification(pub Option<isize>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BorderMessage {
+    Update(Option<isize>),
+    PassEvent(isize, u32),
+    Show(isize),
+    Hide(isize),
+    Raise(isize),
+    Lower(isize),
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct BorderInfo {
@@ -197,77 +207,85 @@ pub fn handle_notifications() -> color_eyre::Result<()> {
 }
 
 impl BorderManager {
-    /// Check if some window with `hwnd` has a border attached to it, if it does returns the
-    /// `BorderInfo` related to it's border.
-    pub fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
-        self.windows_borders.get(&hwnd).and_then(|id| {
-            self.borders.get(id).map(|b| BorderInfo {
-                border_hwnd: b.hwnd,
-                window_kind: b.window_kind,
-            })
-        })
-    }
+    pub fn update(
+        &mut self,
+        wm: &mut WindowManager,
+        message: BorderMessage,
+    ) -> color_eyre::Result<()> {
+        match message {
+            BorderMessage::Update(tracking_hwnd) => {
+                self.handle_border_update(wm, tracking_hwnd)
+            }
+            BorderMessage::PassEvent(tracking_hwnd, event) => {
+                let border_info = self.window_border(tracking_hwnd);
 
-    /// Destroys all known and unknown borders
-    pub fn destroy_all_borders(&mut self) -> color_eyre::Result<()> {
-        tracing::info!(
-            "purging known borders: {:?}",
-            self.borders.iter().map(|b| b.1.hwnd).collect::<Vec<_>>()
-        );
+                if let Some(border_info) = border_info {
+                    notify_border(
+                        border_info.hwnd(),
+                        event,
+                        tracking_hwnd,
+                    );
+                }
 
-        for (_, border) in self.borders.drain() {
-            let _ = destroy_border(border);
-        }
-
-        self.windows_borders.clear();
-
-        let mut remaining_hwnds = vec![];
-
-        WindowsApi::enum_windows(
-            Some(border_hwnds),
-            &mut remaining_hwnds as *mut Vec<isize> as isize,
-        )?;
-
-        if !remaining_hwnds.is_empty() {
-            tracing::info!("purging unknown borders: {:?}", remaining_hwnds);
-
-            for hwnd in remaining_hwnds {
-                let _ = destroy_border(Box::new(Border::from(hwnd)));
+                Ok(())
+            }
+            BorderMessage::Show(tracking_hwnd) => {
+                if let Some(border_info) = self.window_border(tracking_hwnd) {
+                    WindowsApi::restore_window(border_info.border_hwnd);
+                }
+                Ok(())
+            }
+            BorderMessage::Hide(tracking_hwnd) => {
+                if let Some(border_info) = self.window_border(tracking_hwnd) {
+                    WindowsApi::hide_window(border_info.border_hwnd);
+                }
+                Ok(())
+            }
+            BorderMessage::Raise(tracking_hwnd) => {
+                if let Some(border_info) = self.window_border(tracking_hwnd) {
+                    WindowsApi::raise_window(border_info.border_hwnd)
+                } else {
+                    Ok(())
+                }
+            }
+            BorderMessage::Lower(tracking_hwnd) => {
+                if let Some(border_info) = self.window_border(tracking_hwnd) {
+                    WindowsApi::lower_window(border_info.border_hwnd)
+                } else {
+                    Ok(())
+                }
             }
         }
-
-        Ok(())
     }
-}
 
-impl WindowManager {
-    pub fn handle_border_notification(
+    pub fn handle_border_update(
         &mut self,
-        notification: Notification,
+        wm: &mut WindowManager,
+        tracking_hwnd: Option<isize>,
     ) -> color_eyre::Result<()> {
         // Check the wm state every time we receive a notification
-        let is_paused = self.is_paused;
-        let focused_monitor_idx = self.focused_monitor_idx();
+        let is_paused = wm.is_paused;
+        let focused_monitor_idx = wm.focused_monitor_idx();
         let focused_workspace_idx =
-            self.monitors.elements()[focused_monitor_idx].focused_workspace_idx();
-        let monitors = self.monitors.clone();
-        let pending_move_op = *self.pending_move_op;
-        let floating_window_hwnds = self.monitors.elements()[focused_monitor_idx].workspaces()
+            wm.monitors.elements()[focused_monitor_idx].focused_workspace_idx();
+        let monitors = wm.monitors.clone();
+        let pending_move_op = *wm.pending_move_op;
+        let floating_window_hwnds = wm.monitors.elements()[focused_monitor_idx].workspaces()
             [focused_workspace_idx]
             .floating_windows()
             .iter()
             .map(|w| w.hwnd)
             .collect::<Vec<_>>();
-        let workspace_layer = *self.monitors.elements()[focused_monitor_idx].workspaces()
+        let workspace_layer = *wm.monitors.elements()[focused_monitor_idx].workspaces()
             [focused_workspace_idx]
             .layer();
         let foreground_window = WindowsApi::foreground_window().unwrap_or_default();
 
-        let previous_snapshot = &mut self.border_manager.previous_snapshot;
-        let previous_pending_move_op = &mut self.border_manager.previous_pending_move_op;
-        let previous_is_paused = &mut self.border_manager.previous_is_paused;
-        let previous_notification = &mut self.border_manager.previous_notification;
-        let previous_layer = &mut self.border_manager.previous_layer;
+        let previous_snapshot = &mut self.previous_snapshot;
+        let previous_pending_move_op = &mut self.previous_pending_move_op;
+        let previous_is_paused = &mut self.previous_is_paused;
+        let previous_tracking_hwnd = &mut self.previous_tracking_hwnd;
+        let previous_layer = &mut self.previous_layer;
 
         match IMPLEMENTATION.load() {
             BorderImplementation::Windows => {
@@ -348,7 +366,7 @@ impl WindowManager {
                 // when we switch focus to/from a floating window
                 let switch_focus_to_from_floating_window = floating_window_hwnds.iter().any(|fw| {
                     // if we switch focus to a floating window
-                    fw == &notification.0.unwrap_or_default() ||
+                    fw == &tracking_hwnd.unwrap_or_default() ||
                     // if there is any floating window with a `WindowKind::Floating` border
                     // that no longer is the foreground window then we need to update that
                     // border.
@@ -362,7 +380,7 @@ impl WindowManager {
                 // komorebi it will have the same state has before, however the previously focused
                 // window changed its border to unfocused so now we need to update it again.
                 if !should_process_notification
-                    && window_border(notification.0.unwrap_or_default())
+                    && window_border(tracking_hwnd.unwrap_or_default())
                         .is_some_and(|b| b.window_kind == WindowKind::Unfocused)
                 {
                     should_process_notification = true;
@@ -373,8 +391,8 @@ impl WindowManager {
                 }
 
                 if !should_process_notification {
-                    if let Some(ref previous) = previous_notification {
-                        if previous.0.unwrap_or_default() != notification.0.unwrap_or_default() {
+                    if let Some(previous) = previous_tracking_hwnd {
+                        if *previous != tracking_hwnd.unwrap_or_default() {
                             should_process_notification = true;
                         }
                     }
@@ -669,8 +687,50 @@ impl WindowManager {
         *previous_snapshot = monitors;
         *previous_pending_move_op = pending_move_op;
         *previous_is_paused = is_paused;
-        *previous_notification = Some(notification);
+        *previous_tracking_hwnd = tracking_hwnd;
         *previous_layer = workspace_layer;
+
+        Ok(())
+    }
+
+    /// Check if some window with `hwnd` has a border attached to it, if it does returns the
+    /// `BorderInfo` related to it's border.
+    pub fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
+        self.windows_borders.get(&hwnd).and_then(|id| {
+            self.borders.get(id).map(|b| BorderInfo {
+                border_hwnd: b.hwnd,
+                window_kind: b.window_kind,
+            })
+        })
+    }
+
+    /// Destroys all known and unknown borders
+    pub fn destroy_all_borders(&mut self) -> color_eyre::Result<()> {
+        tracing::info!(
+            "purging known borders: {:?}",
+            self.borders.iter().map(|b| b.1.hwnd).collect::<Vec<_>>()
+        );
+
+        for (_, border) in self.borders.drain() {
+            let _ = destroy_border(border);
+        }
+
+        self.windows_borders.clear();
+
+        let mut remaining_hwnds = vec![];
+
+        WindowsApi::enum_windows(
+            Some(border_hwnds),
+            &mut remaining_hwnds as *mut Vec<isize> as isize,
+        )?;
+
+        if !remaining_hwnds.is_empty() {
+            tracing::info!("purging unknown borders: {:?}", remaining_hwnds);
+
+            for hwnd in remaining_hwnds {
+                let _ = destroy_border(Box::new(Border::from(hwnd)));
+            }
+        }
 
         Ok(())
     }
