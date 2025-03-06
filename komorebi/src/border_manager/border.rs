@@ -1,9 +1,7 @@
-use crate::border_manager::window_kind_colour;
+use super::WindowKindColours;
+
 use crate::border_manager::RenderTarget;
 use crate::border_manager::WindowKind;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
-use crate::border_manager::STYLE;
 use crate::core::BorderStyle;
 use crate::core::Rect;
 use crate::windows_api;
@@ -12,7 +10,6 @@ use crate::WINDOWS_11;
 use color_eyre::eyre::anyhow;
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -101,19 +98,23 @@ static BRUSH_PROPERTIES: LazyLock<D2D1_BRUSH_PROPERTIES> =
     });
 
 pub extern "system" fn border_hwnds(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let hwnds = unsafe { &mut *(lparam.0 as *mut Vec<isize>) };
+    let hwnds = unsafe { &mut *(lparam.0 as *mut Vec<Border>) };
     let hwnd = hwnd.0 as isize;
 
     if let Ok(class) = WindowsApi::real_window_class_w(hwnd) {
         if class.starts_with("komoborder") {
-            hwnds.push(hwnd);
+            let border = Border {
+                hwnd,
+                ..Default::default()
+            };
+            hwnds.push(border);
         }
     }
 
     true.into()
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Border {
     pub hwnd: isize,
     pub id: String,
@@ -130,26 +131,6 @@ pub struct Border {
     pub brushes: HashMap<WindowKind, ID2D1SolidColorBrush>,
 }
 
-impl From<isize> for Border {
-    fn from(value: isize) -> Self {
-        Self {
-            hwnd: value,
-            id: String::new(),
-            monitor_idx: None,
-            render_target: OnceLock::new(),
-            tracking_hwnd: 0,
-            window_rect: Rect::default(),
-            window_kind: WindowKind::Unfocused,
-            style: STYLE.load(),
-            width: BORDER_WIDTH.load(Ordering::Relaxed),
-            offset: BORDER_OFFSET.load(Ordering::Relaxed),
-            brush_properties: D2D1_BRUSH_PROPERTIES::default(),
-            rounded_rect: D2D1_ROUNDED_RECT::default(),
-            brushes: HashMap::new(),
-        }
-    }
-}
-
 impl Border {
     pub const fn hwnd(&self) -> HWND {
         HWND(windows_api::as_ptr!(self.hwnd))
@@ -159,7 +140,11 @@ impl Border {
         id: &str,
         tracking_hwnd: isize,
         monitor_idx: usize,
-    ) -> color_eyre::Result<Box<Self>> {
+        style: BorderStyle,
+        width: i32,
+        offset: i32,
+        kind_colours: WindowKindColours,
+    ) -> color_eyre::Result<Box<Border>> {
         let name: Vec<u16> = format!("komoborder-{id}\0").encode_utf16().collect();
         let class_name = PCWSTR(name.as_ptr());
 
@@ -168,7 +153,7 @@ impl Border {
         let window_class = WNDCLASSW {
             hInstance: h_module.into(),
             lpszClassName: class_name,
-            lpfnWndProc: Some(Self::callback),
+            lpfnWndProc: Some(Border::callback),
             hbrBackground: WindowsApi::create_solid_brush(0),
             ..Default::default()
         };
@@ -180,7 +165,7 @@ impl Border {
         let instance = h_module.0 as isize;
         let container_id = id.to_owned();
         std::thread::spawn(move || -> color_eyre::Result<()> {
-            let mut border = Self {
+            let mut border = Border {
                 hwnd: 0,
                 id: container_id,
                 monitor_idx: Some(monitor_idx),
@@ -188,9 +173,9 @@ impl Border {
                 tracking_hwnd,
                 window_rect: WindowsApi::window_rect(tracking_hwnd).unwrap_or_default(),
                 window_kind: WindowKind::Unfocused,
-                style: STYLE.load(),
-                width: BORDER_WIDTH.load(Ordering::Relaxed),
-                offset: BORDER_OFFSET.load(Ordering::Relaxed),
+                style,
+                width,
+                offset,
                 brush_properties: Default::default(),
                 rounded_rect: Default::default(),
                 brushes: HashMap::new(),
@@ -273,7 +258,7 @@ impl Border {
                     WindowKind::Unfocused,
                     WindowKind::Floating,
                 ] {
-                    let color = window_kind_colour(window_kind);
+                    let color = kind_colours.from_kind(window_kind);
                     let color = D2D1_COLOR_F {
                         r: ((color & 0xFF) as f32) / 255.0,
                         g: (((color >> 8) & 0xFF) as f32) / 255.0,
@@ -312,7 +297,6 @@ impl Border {
             Err(error) => Err(error.into()),
         }
     }
-
     pub fn destroy(&self) -> color_eyre::Result<()> {
         WindowsApi::close_window(self.hwnd)
     }
@@ -477,9 +461,6 @@ impl Border {
                         }
 
                         if let Some(render_target) = (*border_pointer).render_target.get() {
-                            (*border_pointer).width = BORDER_WIDTH.load(Ordering::Relaxed);
-                            (*border_pointer).offset = BORDER_OFFSET.load(Ordering::Relaxed);
-
                             let border_width = (*border_pointer).width;
                             let border_offset = (*border_pointer).offset;
 
@@ -500,8 +481,6 @@ impl Border {
                             if let Some(brush) = (*border_pointer).brushes.get(&window_kind) {
                                 render_target.BeginDraw();
                                 render_target.Clear(None);
-
-                                (*border_pointer).style = STYLE.load();
 
                                 // Calculate border radius based on style
                                 let style = match (*border_pointer).style {

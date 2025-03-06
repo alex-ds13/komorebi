@@ -22,8 +22,6 @@ use crate::core::Layout;
 use crate::core::OperationDirection;
 use crate::core::Rect;
 
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
 use crate::container::Container;
 use crate::ring::Ring;
 use crate::should_act;
@@ -333,7 +331,7 @@ impl Workspace {
         Ok(())
     }
 
-    pub fn update(&mut self) -> Result<()> {
+    pub fn update(&mut self, border_width: i32, border_offset: i32) -> Result<()> {
         if !INITIAL_CONFIGURATION_LOADED.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -419,10 +417,8 @@ impl Workspace {
                 if let Some(window) = container.focused_window_mut() {
                     adjusted_work_area.add_padding(container_padding);
                     {
-                        let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
                         adjusted_work_area.add_padding(border_offset);
-                        let width = BORDER_WIDTH.load(Ordering::SeqCst);
-                        adjusted_work_area.add_padding(width);
+                        adjusted_work_area.add_padding(border_width);
                     }
                     window.set_position(&adjusted_work_area, true)?;
                 };
@@ -452,11 +448,8 @@ impl Workspace {
 
                     if let Some(layout) = layouts.get_mut(i) {
                         {
-                            let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
                             layout.add_padding(border_offset);
-
-                            let width = BORDER_WIDTH.load(Ordering::SeqCst);
-                            layout.add_padding(width);
+                            layout.add_padding(border_width);
                         }
 
                         if stackbar_manager::should_have_stackbar(window_count) {

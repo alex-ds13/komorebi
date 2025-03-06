@@ -44,8 +44,6 @@ use crate::animation::ANIMATION_ENABLED_GLOBAL;
 use crate::animation::ANIMATION_FPS;
 use crate::animation::ANIMATION_STYLE_GLOBAL;
 use crate::border_manager;
-use crate::border_manager::IMPLEMENTATION;
-use crate::border_manager::STYLE;
 use crate::colour::Rgb;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::current_virtual_desktop;
@@ -103,7 +101,6 @@ pub fn listen_for_commands_1(command_listener: UnixListener) {
             .try_clone()
             .expect("could not clone unix listener");
         let _ = std::thread::spawn(move || {
-
             tracing::info!("listening on komorebi.sock");
             for client in listener.incoming() {
                 match client {
@@ -564,6 +561,8 @@ impl WindowManager {
                 }
 
                 let offset = self.work_area_offset;
+                let border_width = self.border_manager.border_width;
+                let border_offset = self.border_manager.border_offset;
 
                 let mut hwnds_to_purge = vec![];
                 for (i, monitor) in self.monitors().iter().enumerate() {
@@ -610,7 +609,7 @@ impl WindowManager {
                         .ok_or_else(|| anyhow!("there is no focused workspace"))?
                         .remove_window(hwnd)?;
 
-                    monitor.update_focused_workspace(offset)?;
+                    monitor.update_focused_workspace(offset, border_width, border_offset)?;
                 }
             }
             SocketMessage::FocusedWorkspaceContainerPadding(adjustment) => {
@@ -1220,7 +1219,7 @@ impl WindowManager {
                 tracing::info!("replying to state done");
             }
             SocketMessage::GlobalState => {
-                let state = match serde_json::to_string_pretty(&GlobalState::default()) {
+                let state = match serde_json::to_string_pretty(&GlobalState::from(&*self)) {
                     Ok(state) => state,
                     Err(error) => error.to_string(),
                 };
@@ -1776,9 +1775,9 @@ impl WindowManager {
                 self.unmanaged_window_operation_behaviour = behaviour;
             }
             SocketMessage::Border(enable) => {
-                border_manager::BORDER_ENABLED.store(enable, Ordering::SeqCst);
+                self.border_manager.enabled = enable;
                 if !enable {
-                    match IMPLEMENTATION.load() {
+                    match self.border_manager.border_implementation {
                         BorderImplementation::Komorebi => {
                             border_manager::destroy_all_borders();
                         }
@@ -1794,8 +1793,8 @@ impl WindowManager {
                         "BorderImplementation::Windows is only supported on Windows 11 and above"
                     );
                 } else {
-                    IMPLEMENTATION.store(implementation);
-                    match IMPLEMENTATION.load() {
+                    self.border_manager.border_implementation = implementation;
+                    match self.border_manager.border_implementation {
                         BorderImplementation::Komorebi => {
                             self.remove_all_accents()?;
                         }
@@ -1809,29 +1808,29 @@ impl WindowManager {
             }
             SocketMessage::BorderColour(kind, r, g, b) => match kind {
                 WindowKind::Single => {
-                    border_manager::FOCUSED.store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.single_colour = Rgb::new(r, g, b).into();
                 }
                 WindowKind::Stack => {
-                    border_manager::STACK.store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.stack_colour = Rgb::new(r, g, b).into();
                 }
                 WindowKind::Monocle => {
-                    border_manager::MONOCLE.store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.monocle_colour = Rgb::new(r, g, b).into();
                 }
                 WindowKind::Unfocused => {
-                    border_manager::UNFOCUSED.store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.unfocused_colour = Rgb::new(r, g, b).into();
                 }
                 WindowKind::Floating => {
-                    border_manager::FLOATING.store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.floating_colour = Rgb::new(r, g, b).into();
                 }
             },
             SocketMessage::BorderStyle(style) => {
-                STYLE.store(style);
+                self.border_manager.border_style = style;
             }
             SocketMessage::BorderWidth(width) => {
-                border_manager::BORDER_WIDTH.store(width, Ordering::SeqCst);
+                self.border_manager.border_width = width;
             }
             SocketMessage::BorderOffset(offset) => {
-                border_manager::BORDER_OFFSET.store(offset, Ordering::SeqCst);
+                self.border_manager.border_offset = offset;
             }
             SocketMessage::Animation(enable, prefix) => match prefix {
                 Some(prefix) => {

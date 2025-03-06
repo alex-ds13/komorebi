@@ -192,12 +192,15 @@ pub fn handle_notifications() -> color_eyre::Result<()> {
             }
         };
 
-        border_manager::FOCUSED.store(u32::from(Colour::from(single_border)), Ordering::SeqCst);
-        border_manager::MONOCLE.store(u32::from(Colour::from(monocle_border)), Ordering::SeqCst);
-        border_manager::STACK.store(u32::from(Colour::from(stack_border)), Ordering::SeqCst);
-        border_manager::FLOATING.store(u32::from(Colour::from(floating_border)), Ordering::SeqCst);
-        border_manager::UNFOCUSED
-            .store(u32::from(Colour::from(unfocused_border)), Ordering::SeqCst);
+        //TODO: ACTUALLY UPDATE THESE VALUES
+        todo!();
+        let (_s, r) = crossbeam_channel::bounded(20);
+        let mut wm = crate::WindowManager::new(r, None)?;
+        wm.border_manager.kind_colours.single_colour = u32::from(Colour::from(single_border));
+        wm.border_manager.kind_colours.monocle_colour = u32::from(Colour::from(monocle_border));
+        wm.border_manager.kind_colours.stack_colour = u32::from(Colour::from(stack_border));
+        wm.border_manager.kind_colours.floating_colour = u32::from(Colour::from(floating_border));
+        wm.border_manager.kind_colours.unfocused_colour = u32::from(Colour::from(unfocused_border));
 
         STACKBAR_TAB_BACKGROUND_COLOUR.store(
             u32::from(Colour::from(stackbar_background)),

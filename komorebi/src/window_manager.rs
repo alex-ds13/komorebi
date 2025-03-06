@@ -48,9 +48,6 @@ use crate::core::WindowContainerBehaviour;
 use crate::core::WindowManagementBehaviour;
 
 use crate::border_manager;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
-use crate::border_manager::STYLE;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::container::Container;
 use crate::core::StackbarMode;
@@ -228,30 +225,30 @@ pub struct GlobalState {
     pub custom_ffm: bool,
 }
 
-impl Default for GlobalState {
-    fn default() -> Self {
+impl From<&WindowManager> for GlobalState {
+    fn from(value: &WindowManager) -> Self {
         Self {
-            border_enabled: border_manager::BORDER_ENABLED.load(Ordering::SeqCst),
+            border_enabled: value.border_manager.enabled,
             border_colours: BorderColours {
                 single: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::FOCUSED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.single_colour,
                 ))),
                 stack: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::STACK.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.stack_colour,
                 ))),
                 monocle: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::MONOCLE.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.monocle_colour,
                 ))),
                 floating: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::FLOATING.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.floating_colour,
                 ))),
                 unfocused: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::UNFOCUSED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.unfocused_colour,
                 ))),
             },
-            border_style: STYLE.load(),
-            border_offset: border_manager::BORDER_OFFSET.load(Ordering::SeqCst),
-            border_width: border_manager::BORDER_WIDTH.load(Ordering::SeqCst),
+            border_style: value.border_manager.border_style,
+            border_offset: value.border_manager.border_offset,
+            border_width: value.border_manager.border_width,
             stackbar_mode: STACKBAR_MODE.load(),
             stackbar_label: STACKBAR_LABEL.load(),
             stackbar_focused_text_colour: Colour::Rgb(Rgb::from(
@@ -511,6 +508,8 @@ impl WindowManager {
             );
 
             let offset = self.work_area_offset;
+            let border_width = self.border_manager.border_width;
+            let border_offset = self.border_manager.border_offset;
             let mouse_follows_focus = self.mouse_follows_focus;
             for (monitor_idx, monitor) in self.monitors_mut().iter_mut().enumerate() {
                 let mut focused_workspace = 0;
@@ -550,7 +549,7 @@ impl WindowManager {
                     );
                 }
 
-                if let Err(error) = monitor.update_focused_workspace(offset) {
+                if let Err(error) = monitor.update_focused_workspace(offset, border_width, border_offset) {
                     tracing::warn!(
                         "cannot update workspace '{focused_workspace}' on monitor '{monitor_idx}' from {}: {}",
                         temp_dir().join("komorebi.state.json").to_string_lossy(),
@@ -994,6 +993,8 @@ impl WindowManager {
     #[tracing::instrument(skip(self))]
     pub fn retile_all(&mut self, preserve_resize_dimensions: bool) -> Result<()> {
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         for monitor in self.monitors_mut() {
             let offset = if monitor.work_area_offset().is_some() {
@@ -1016,7 +1017,7 @@ impl WindowManager {
                 }
             }
 
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
         }
 
         Ok(())
@@ -1325,10 +1326,12 @@ impl WindowManager {
         tracing::info!("updating");
 
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         self.focused_monitor_mut()
             .ok_or_else(|| anyhow!("there is no monitor"))?
-            .update_focused_workspace(offset)?;
+            .update_focused_workspace(offset, border_width, border_offset)?;
 
         if follow_focus {
             if let Some(window) = self.focused_workspace()?.maximized_window() {
@@ -1410,8 +1413,8 @@ impl WindowManager {
                 let workspace = self.focused_workspace()?;
                 let focused_hwnd = WindowsApi::foreground_window()?;
 
-                let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
-                let border_width = BORDER_WIDTH.load(Ordering::SeqCst);
+                let border_offset = self.border_manager.border_offset;
+                let border_width = self.border_manager.border_width;
                 focused_monitor_work_area.left += border_offset;
                 focused_monitor_work_area.left += border_width;
                 focused_monitor_work_area.top += border_offset;
@@ -1613,7 +1616,7 @@ impl WindowManager {
         let no_titlebar = NO_TITLEBAR.lock();
         let regex_identifiers = REGEX_IDENTIFIERS.lock();
         let known_transparent_hwnds = transparency_manager::known_hwnds();
-        let border_implementation = border_manager::IMPLEMENTATION.load();
+        let border_implementation = self.border_manager.border_implementation;
 
         for monitor in self.monitors_mut() {
             for workspace in monitor.workspaces_mut() {
@@ -1701,11 +1704,13 @@ impl WindowManager {
 
     pub fn update_focused_workspace_by_monitor_idx(&mut self, idx: usize) -> Result<()> {
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         self.monitors_mut()
             .get_mut(idx)
             .ok_or_else(|| anyhow!("there is no monitor"))?
-            .update_focused_workspace(offset)
+            .update_focused_workspace(offset, border_width, border_offset)
     }
 
     #[tracing::instrument(skip(self))]
@@ -1808,6 +1813,8 @@ impl WindowManager {
         }
 
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
         let mouse_follows_focus = self.mouse_follows_focus;
 
         let monitor = self
@@ -1841,7 +1848,7 @@ impl WindowManager {
         } else {
             None
         };
-        monitor.update_focused_workspace(offset)?;
+        monitor.update_focused_workspace(offset, border_width, border_offset)?;
 
         let target_monitor = self
             .monitors_mut()
@@ -1894,12 +1901,12 @@ impl WindowManager {
         if should_load_workspace {
             target_monitor.load_focused_workspace(mouse_follows_focus)?;
         }
-        target_monitor.update_focused_workspace(offset)?;
+        target_monitor.update_focused_workspace(offset, border_width, border_offset)?;
 
         // this second one is for DPI changes when the target is another monitor
         // if we don't do this the layout on the other monitor could look funny
         // until it is interacted with again
-        target_monitor.update_focused_workspace(offset)?;
+        target_monitor.update_focused_workspace(offset, border_width, border_offset)?;
 
         if follow {
             self.focus_monitor(monitor_idx)?;
@@ -2176,8 +2183,8 @@ impl WindowManager {
         let mouse_follows_focus = self.mouse_follows_focus;
 
         let mut focused_monitor_work_area = self.focused_monitor_work_area()?;
-        let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
-        let border_width = BORDER_WIDTH.load(Ordering::SeqCst);
+        let border_offset = self.border_manager.border_offset;
+        let border_width = self.border_manager.border_width;
         focused_monitor_work_area.left += border_offset;
         focused_monitor_work_area.left += border_width;
         focused_monitor_work_area.top += border_offset;
@@ -2389,11 +2396,13 @@ impl WindowManager {
                 // make sure to update the origin monitor workspace layout because it is no
                 // longer focused so it won't get updated at the end of this fn
                 let offset = self.work_area_offset;
+                let border_width = self.border_manager.border_width;
+                let border_offset = self.border_manager.border_offset;
 
                 self.monitors_mut()
                     .get_mut(origin_monitor_idx)
                     .ok_or_else(|| anyhow!("there is no monitor at this index"))?
-                    .update_focused_workspace(offset)?;
+                    .update_focused_workspace(offset, border_width, border_offset)?;
 
                 let a = self
                     .focused_monitor()
@@ -3143,6 +3152,8 @@ impl WindowManager {
         tracing::info!("setting workspace layout");
 
         let focused_monitor_idx = self.focused_monitor_idx();
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         let monitor = self
             .monitors_mut()
@@ -3163,7 +3174,7 @@ impl WindowManager {
 
         // If this is the focused workspace on a non-focused screen, let's update it
         if focused_monitor_idx != monitor_idx && focused_workspace_idx == workspace_idx {
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
             Ok(())
         } else {
             Ok(self.update_focused_workspace(false, false)?)
@@ -3184,6 +3195,8 @@ impl WindowManager {
         tracing::info!("setting workspace layout");
 
         let focused_monitor_idx = self.focused_monitor_idx();
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         let monitor = self
             .monitors_mut()
@@ -3206,7 +3219,7 @@ impl WindowManager {
 
         // If this is the focused workspace on a non-focused screen, let's update it
         if focused_monitor_idx != monitor_idx && focused_workspace_idx == workspace_idx {
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
             Ok(())
         } else {
             Ok(self.update_focused_workspace(false, false)?)
@@ -3222,6 +3235,8 @@ impl WindowManager {
         tracing::info!("setting workspace layout");
 
         let focused_monitor_idx = self.focused_monitor_idx();
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         let monitor = self
             .monitors_mut()
@@ -3240,7 +3255,7 @@ impl WindowManager {
 
         // If this is the focused workspace on a non-focused screen, let's update it
         if focused_monitor_idx != monitor_idx && focused_workspace_idx == workspace_idx {
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
             Ok(())
         } else {
             Ok(self.update_focused_workspace(false, false)?)
@@ -3257,6 +3272,8 @@ impl WindowManager {
         tracing::info!("setting workspace layout");
 
         let focused_monitor_idx = self.focused_monitor_idx();
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         let monitor = self
             .monitors_mut()
@@ -3274,7 +3291,7 @@ impl WindowManager {
 
         // If this is the focused workspace on a non-focused screen, let's update it
         if focused_monitor_idx != monitor_idx && focused_workspace_idx == workspace_idx {
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
             Ok(())
         } else {
             Ok(self.update_focused_workspace(false, false)?)
@@ -3294,6 +3311,8 @@ impl WindowManager {
         tracing::info!("setting workspace layout");
         let layout = CustomLayout::from_path(path)?;
         let focused_monitor_idx = self.focused_monitor_idx();
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         let monitor = self
             .monitors_mut()
@@ -3312,7 +3331,7 @@ impl WindowManager {
 
         // If this is the focused workspace on a non-focused screen, let's update it
         if focused_monitor_idx != monitor_idx && focused_workspace_idx == workspace_idx {
-            workspace.update()?;
+            workspace.update(border_width, border_offset)?;
             Ok(())
         } else {
             Ok(self.update_focused_workspace(false, false)?)
