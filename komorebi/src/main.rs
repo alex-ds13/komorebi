@@ -11,7 +11,6 @@ use std::env::temp_dir;
 use std::net::Shutdown;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 #[cfg(feature = "deadlock_detection")]
 use std::time::Duration;
 
@@ -24,10 +23,8 @@ use komorebi::animation::AnimationEngine;
 use komorebi::animation::ANIMATION_ENABLED_GLOBAL;
 use komorebi::animation::ANIMATION_ENABLED_PER_ANIMATION;
 use komorebi::replace_env_in_path;
-use komorebi::komorebi::Komorebi;
 #[cfg(feature = "deadlock_detection")]
 use parking_lot::deadlock;
-use parking_lot::Mutex;
 use serde::Deserialize;
 use sysinfo::Process;
 use sysinfo::ProcessesToUpdate;
@@ -36,7 +33,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::EnvFilter;
 use uds_windows::UnixStream;
 
-use komorebi::border_manager;
 use komorebi::focus_manager;
 use komorebi::load_configuration;
 use komorebi::monitor_reconciliator;
@@ -329,13 +325,8 @@ fn main() -> Result<()> {
 
     wm.retile_all(false)?;
 
-    let mut komorebi = Komorebi {
-        window_manager: wm,
-        border_manager: Default::default(),
-    };
-
-    // Start the komorebi runtime
-    komorebi.run();
+    // Start the runtime
+    wm.run();
 
 
     // border_manager::listen_for_notifications(wm.clone());
@@ -372,12 +363,12 @@ fn main() -> Result<()> {
 
     tracing::error!("received ctrl-c, restoring all hidden windows and terminating process");
 
-    let state = State::from(&komorebi.window_manager);
+    let state = State::from(&wm);
     std::fs::write(dumped_state, serde_json::to_string_pretty(&state)?)?;
 
     ANIMATION_ENABLED_PER_ANIMATION.lock().clear();
     ANIMATION_ENABLED_GLOBAL.store(false, Ordering::SeqCst);
-    komorebi.window_manager.restore_all_windows(false)?;
+    wm.restore_all_windows(false)?;
     AnimationEngine::wait_for_all_animations();
 
     if WindowsApi::focus_follows_mouse()? {
