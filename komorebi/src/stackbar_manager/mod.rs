@@ -107,6 +107,10 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
             continue 'receiver;
         }
 
+        let border_width = state.border_manager.border_width;
+        let border_offset = state.border_manager.border_offset;
+        let border_style = state.border_manager.border_style;
+
         for (monitor_idx, m) in state.monitors_mut().iter_mut().enumerate() {
             // Only operate on the focused workspace of each monitor
             if let Some(ws) = m.focused_workspace_mut() {
@@ -208,7 +212,14 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                         container.focused_window().copied().unwrap_or_default().hwnd,
                     )?;
 
-                    stackbar.update(container_padding, container, &rect)?;
+                    stackbar.update(
+                        container_padding,
+                        container,
+                        &rect,
+                        border_width,
+                        border_offset,
+                        border_style,
+                    )?;
                 }
             }
         }
