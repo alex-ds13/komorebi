@@ -1,10 +1,8 @@
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use color_eyre::eyre::anyhow;
 use color_eyre::Result;
 use crossbeam_utils::atomic::AtomicConsume;
-use parking_lot::Mutex;
 
 use crate::core::OperationDirection;
 use crate::core::Rect;
@@ -12,8 +10,6 @@ use crate::core::Sizing;
 use crate::core::WindowContainerBehaviour;
 
 use crate::border_manager;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
 use crate::current_virtual_desktop;
 use crate::notify_subscribers;
 use crate::stackbar_manager;
@@ -37,30 +33,6 @@ use crate::FLOATING_APPLICATIONS;
 use crate::HIDDEN_HWNDS;
 use crate::REGEX_IDENTIFIERS;
 use crate::TRAY_AND_MULTI_WINDOW_IDENTIFIERS;
-
-#[tracing::instrument]
-pub fn listen_for_events(wm: Arc<Mutex<WindowManager>>) {
-    let receiver = wm.lock().incoming_events.clone();
-
-    std::thread::spawn(move || {
-        tracing::info!("listening");
-        loop {
-            if let Ok(event) = receiver.recv() {
-                let mut guard = wm.lock();
-                match guard.process_event(event) {
-                    Ok(()) => {}
-                    Err(error) => {
-                        if cfg!(debug_assertions) {
-                            tracing::error!("{:?}", error)
-                        } else {
-                            tracing::error!("{}", error)
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
 
 impl WindowManager {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -755,8 +727,8 @@ impl WindowManager {
                         }
 
                         // TODO: Determine if this is still needed
-                        let top_left_constant = BORDER_WIDTH.load(Ordering::SeqCst)
-                            + BORDER_OFFSET.load(Ordering::SeqCst);
+                        let top_left_constant =
+                            self.border_manager.border_width + self.border_manager.border_offset;
 
                         if resize.right != 0
                             && (resize.left == top_left_constant || resize.left == 0)
@@ -882,6 +854,8 @@ impl WindowManager {
         self.focus_monitor(m_idx)?;
         let mouse_follows_focus = self.mouse_follows_focus;
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         if let Some(monitor) = self.focused_monitor_mut() {
             if ws_idx != monitor.focused_workspace_idx() {
@@ -925,7 +899,7 @@ impl WindowManager {
                 workspace.set_layer(layer);
             }
             monitor.load_focused_workspace(mouse_follows_focus)?;
-            monitor.update_focused_workspace(offset)?;
+            monitor.update_focused_workspace(offset, border_width, border_offset)?;
         }
 
         Ok(())

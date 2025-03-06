@@ -11,8 +11,6 @@ use crate::asc::ApplicationSpecificConfiguration;
 use crate::asc::AscApplicationRulesOrSchema;
 use crate::border_manager;
 use crate::border_manager::ZOrder;
-use crate::border_manager::IMPLEMENTATION;
-use crate::border_manager::STYLE;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::core::config_generation::ApplicationConfiguration;
 use crate::core::config_generation::ApplicationConfigurationGenerator;
@@ -828,21 +826,25 @@ impl From<&WindowManager> for StaticConfig {
             monitors.push(MonitorConfig::from(m));
         }
 
-        let border_colours = if border_manager::FOCUSED.load(Ordering::SeqCst) == 0 {
+        let border_colours = if value.border_manager.kind_colours.single_colour == 0 {
             None
         } else {
             Option::from(BorderColours {
-                single: Option::from(Colour::from(border_manager::FOCUSED.load(Ordering::SeqCst))),
-                stack: Option::from(Colour::from(border_manager::STACK.load(Ordering::SeqCst))),
-                monocle: Option::from(Colour::from(border_manager::MONOCLE.load(Ordering::SeqCst))),
+                single: Option::from(Colour::from(
+                    value.border_manager.kind_colours.single_colour,
+                )),
+                stack: Option::from(Colour::from(value.border_manager.kind_colours.stack_colour)),
+                monocle: Option::from(Colour::from(
+                    value.border_manager.kind_colours.monocle_colour,
+                )),
                 floating: Option::from(Colour::from(
-                    border_manager::FLOATING.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.floating_colour,
                 )),
                 unfocused: Option::from(Colour::from(
-                    border_manager::UNFOCUSED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.unfocused_colour,
                 )),
                 unfocused_locked: Option::from(Colour::from(
-                    border_manager::UNFOCUSED_LOCKED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.unfocused_locked_colour,
                 )),
             })
         };
@@ -879,9 +881,9 @@ impl From<&WindowManager> for StaticConfig {
             focus_follows_mouse: value.focus_follows_mouse,
             mouse_follows_focus: Option::from(value.mouse_follows_focus),
             app_specific_configuration_path: None,
-            border_width: Option::from(border_manager::BORDER_WIDTH.load(Ordering::SeqCst)),
-            border_offset: Option::from(border_manager::BORDER_OFFSET.load(Ordering::SeqCst)),
-            border: Option::from(border_manager::BORDER_ENABLED.load(Ordering::SeqCst)),
+            border_width: Option::from(value.border_manager.border_width),
+            border_offset: Option::from(value.border_manager.border_offset),
+            border: Option::from(value.border_manager.enabled),
             border_colours,
             transparency: Option::from(
                 transparency_manager::TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
@@ -890,9 +892,9 @@ impl From<&WindowManager> for StaticConfig {
                 transparency_manager::TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
             ),
             transparency_ignore_rules: None,
-            border_style: Option::from(STYLE.load()),
+            border_style: Option::from(value.border_manager.border_style),
             border_z_order: None,
-            border_implementation: Option::from(IMPLEMENTATION.load()),
+            border_implementation: Option::from(value.border_manager.border_implementation),
             default_workspace_padding: Option::from(
                 DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst),
             ),
@@ -936,37 +938,39 @@ impl From<&WindowManager> for StaticConfig {
     }
 }
 
-impl StaticConfig {
+impl WindowManager {
     #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
-    fn apply_globals(&mut self) -> Result<()> {
-        *FLOATING_WINDOW_TOGGLE_ASPECT_RATIO.lock() = self
+    /// Stores the global configurations on the `WindowManager` or on the atomic or arc mutex
+    /// variables.
+    fn apply_globals(&mut self, config: &mut StaticConfig) -> Result<()> {
+        *FLOATING_WINDOW_TOGGLE_ASPECT_RATIO.lock() = config
             .floating_window_aspect_ratio
             .unwrap_or(AspectRatio::Predefined(PredefinedAspectRatio::Standard));
 
-        if let Some(monitor_index_preferences) = &self.monitor_index_preferences {
+        if let Some(monitor_index_preferences) = &config.monitor_index_preferences {
             let mut preferences = MONITOR_INDEX_PREFERENCES.lock();
             preferences.clone_from(monitor_index_preferences);
         }
 
-        if let Some(display_index_preferences) = &self.display_index_preferences {
+        if let Some(display_index_preferences) = &config.display_index_preferences {
             let mut preferences = DISPLAY_INDEX_PREFERENCES.write();
             preferences.clone_from(display_index_preferences);
         }
 
-        if let Some(behaviour) = self.window_hiding_behaviour {
+        if let Some(behaviour) = config.window_hiding_behaviour {
             let mut window_hiding_behaviour = HIDING_BEHAVIOUR.lock();
             *window_hiding_behaviour = behaviour;
         }
 
-        if let Some(height) = self.minimum_window_height {
+        if let Some(height) = config.minimum_window_height {
             window::MINIMUM_HEIGHT.store(height, Ordering::SeqCst);
         }
 
-        if let Some(width) = self.minimum_window_width {
+        if let Some(width) = config.minimum_window_width {
             window::MINIMUM_WIDTH.store(width, Ordering::SeqCst);
         }
 
-        if let Some(animations) = &self.animation {
+        if let Some(animations) = &config.animation {
             match &animations.enabled {
                 PerAnimationPrefixConfig::Prefix(enabled) => {
                     ANIMATION_ENABLED_PER_ANIMATION.lock().clone_from(enabled);
@@ -1006,50 +1010,50 @@ impl StaticConfig {
             );
         }
 
-        if let Some(container) = self.default_container_padding {
+        if let Some(container) = config.default_container_padding {
             DEFAULT_CONTAINER_PADDING.store(container, Ordering::SeqCst);
         }
 
-        if let Some(workspace) = self.default_workspace_padding {
+        if let Some(workspace) = config.default_workspace_padding {
             DEFAULT_WORKSPACE_PADDING.store(workspace, Ordering::SeqCst);
         }
 
-        border_manager::BORDER_WIDTH.store(self.border_width.unwrap_or(8), Ordering::SeqCst);
-        border_manager::BORDER_OFFSET.store(self.border_offset.unwrap_or(-1), Ordering::SeqCst);
-        border_manager::BORDER_ENABLED.store(self.border.unwrap_or(true), Ordering::SeqCst);
+        self.border_manager.border_width = config.border_width.unwrap_or(8);
+        self.border_manager.border_offset = config.border_offset.unwrap_or(-1);
+        self.border_manager.enabled = config.border.unwrap_or(true);
 
-        if let Some(colours) = &self.border_colours {
+        if let Some(colours) = &config.border_colours {
             if let Some(single) = colours.single {
-                border_manager::FOCUSED.store(u32::from(single), Ordering::SeqCst);
+                self.border_manager.kind_colours.single_colour = u32::from(single);
             }
 
             if let Some(stack) = colours.stack {
-                border_manager::STACK.store(u32::from(stack), Ordering::SeqCst);
+                self.border_manager.kind_colours.stack_colour = u32::from(stack);
             }
 
             if let Some(monocle) = colours.monocle {
-                border_manager::MONOCLE.store(u32::from(monocle), Ordering::SeqCst);
+                self.border_manager.kind_colours.monocle_colour = u32::from(monocle);
             }
 
             if let Some(floating) = colours.floating {
-                border_manager::FLOATING.store(u32::from(floating), Ordering::SeqCst);
+                self.border_manager.kind_colours.floating_colour = u32::from(floating);
             }
 
             if let Some(unfocused) = colours.unfocused {
-                border_manager::UNFOCUSED.store(u32::from(unfocused), Ordering::SeqCst);
+                self.border_manager.kind_colours.unfocused_colour = u32::from(unfocused);
             }
 
             if let Some(unfocused_locked) = colours.unfocused_locked {
-                border_manager::UNFOCUSED_LOCKED
-                    .store(u32::from(unfocused_locked), Ordering::SeqCst);
+                self.border_manager.kind_colours.unfocused_locked_colour =
+                    u32::from(unfocused_locked);
             }
         }
 
-        STYLE.store(self.border_style.unwrap_or_default());
+        self.border_manager.border_style = config.border_style.unwrap_or_default();
 
         if !*WINDOWS_11
             && matches!(
-                self.border_implementation.unwrap_or_default(),
+                config.border_implementation.unwrap_or_default(),
                 BorderImplementation::Windows
             )
         {
@@ -1057,8 +1061,9 @@ impl StaticConfig {
                 "BorderImplementation::Windows is only supported on Windows 11 and above"
             );
         } else {
-            IMPLEMENTATION.store(self.border_implementation.unwrap_or_default());
-            match IMPLEMENTATION.load() {
+            self.border_manager.border_implementation =
+                config.border_implementation.unwrap_or_default();
+            match self.border_manager.border_implementation {
                 BorderImplementation::Komorebi => {
                     border_manager::destroy_all_borders();
                 }
@@ -1071,9 +1076,9 @@ impl StaticConfig {
         }
 
         transparency_manager::TRANSPARENCY_ENABLED
-            .store(self.transparency.unwrap_or(false), Ordering::SeqCst);
+            .store(config.transparency.unwrap_or(false), Ordering::SeqCst);
         transparency_manager::TRANSPARENCY_ALPHA
-            .store(self.transparency_alpha.unwrap_or(200), Ordering::SeqCst);
+            .store(config.transparency_alpha.unwrap_or(200), Ordering::SeqCst);
 
         let mut ignore_identifiers = IGNORE_IDENTIFIERS.lock();
         let mut regex_identifiers = REGEX_IDENTIFIERS.lock();
@@ -1087,19 +1092,19 @@ impl StaticConfig {
         let mut floating_applications = FLOATING_APPLICATIONS.lock();
         let mut no_titlebar_applications = NO_TITLEBAR.lock();
 
-        if let Some(rules) = &mut self.ignore_rules {
+        if let Some(rules) = &mut config.ignore_rules {
             populate_rules(rules, &mut ignore_identifiers, &mut regex_identifiers)?;
         }
 
-        if let Some(rules) = &mut self.floating_applications {
+        if let Some(rules) = &mut config.floating_applications {
             populate_rules(rules, &mut floating_applications, &mut regex_identifiers)?;
         }
 
-        if let Some(rules) = &mut self.manage_rules {
+        if let Some(rules) = &mut config.manage_rules {
             populate_rules(rules, &mut manage_identifiers, &mut regex_identifiers)?;
         }
 
-        if let Some(rules) = &mut self.object_name_change_applications {
+        if let Some(rules) = &mut config.object_name_change_applications {
             populate_rules(
                 rules,
                 &mut object_name_change_identifiers,
@@ -1107,7 +1112,7 @@ impl StaticConfig {
             )?;
         }
 
-        if let Some(regexes) = &mut self.object_name_change_title_ignore_list {
+        if let Some(regexes) = &mut config.object_name_change_title_ignore_list {
             let mut updated = vec![];
             for r in regexes {
                 if let Ok(regex) = Regex::new(r) {
@@ -1118,11 +1123,11 @@ impl StaticConfig {
             *object_name_change_title_ignore_list = updated;
         }
 
-        if let Some(rules) = &mut self.layered_applications {
+        if let Some(rules) = &mut config.layered_applications {
             populate_rules(rules, &mut layered_identifiers, &mut regex_identifiers)?;
         }
 
-        if let Some(rules) = &mut self.tray_and_multi_window_applications {
+        if let Some(rules) = &mut config.tray_and_multi_window_applications {
             populate_rules(
                 rules,
                 &mut tray_and_multi_window_identifiers,
@@ -1130,11 +1135,11 @@ impl StaticConfig {
             )?;
         }
 
-        if let Some(rules) = &mut self.transparency_ignore_rules {
+        if let Some(rules) = &mut config.transparency_ignore_rules {
             populate_rules(rules, &mut transparency_blacklist, &mut regex_identifiers)?;
         }
 
-        if let Some(rules) = &mut self.slow_application_identifiers {
+        if let Some(rules) = &mut config.slow_application_identifiers {
             populate_rules(
                 rules,
                 &mut slow_application_identifiers,
@@ -1142,11 +1147,11 @@ impl StaticConfig {
             )?;
         }
 
-        if let Some(rules) = &mut self.remove_titlebar_applications {
+        if let Some(rules) = &mut config.remove_titlebar_applications {
             populate_rules(rules, &mut no_titlebar_applications, &mut regex_identifiers)?;
         }
 
-        if let Some(stackbar) = &self.stackbar {
+        if let Some(stackbar) = &config.stackbar {
             if let Some(height) = &stackbar.height {
                 STACKBAR_TAB_HEIGHT.store(*height, Ordering::SeqCst);
             }
@@ -1182,11 +1187,11 @@ impl StaticConfig {
             }
         }
 
-        if let Some(theme) = &self.theme {
+        if let Some(theme) = &config.theme {
             theme_manager::send_notification(theme.clone());
         }
 
-        if let Some(path) = &self.app_specific_configuration_path {
+        if let Some(path) = &config.app_specific_configuration_path {
             match path {
                 AppSpecificConfigurationPath::Single(path) => handle_asc_file(
                     path,
@@ -1219,13 +1224,15 @@ impl StaticConfig {
             }
         }
 
-        if let Some(behaviour) = self.window_handling_behaviour {
+        if let Some(behaviour) = config.window_handling_behaviour {
             WINDOW_HANDLING_BEHAVIOUR.store(behaviour);
         }
 
         Ok(())
     }
+}
 
+impl StaticConfig {
     pub fn read_raw(raw: &str) -> Result<Self> {
         Ok(serde_json::from_str(raw)?)
     }
@@ -1242,7 +1249,6 @@ impl StaticConfig {
         unix_listener: Option<UnixListener>,
     ) -> Result<WindowManager> {
         let mut value = Self::read(path)?;
-        value.apply_globals()?;
 
         let listener = match unix_listener {
             Some(listener) => listener,
@@ -1309,6 +1315,8 @@ impl StaticConfig {
             border_manager: Default::default(),
         };
 
+        wm.apply_globals(&mut value)?;
+
         match value.focus_follows_mouse {
             None => WindowsApi::disable_focus_follows_mouse()?,
             Some(FocusFollowsMouseImplementation::Windows) => {
@@ -1350,6 +1358,8 @@ impl StaticConfig {
         let monitor_count = wm.monitors().len();
 
         let offset = wm.work_area_offset;
+        let border_width = wm.border_manager.border_width;
+        let border_offset = wm.border_manager.border_offset;
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
@@ -1400,7 +1410,7 @@ impl StaticConfig {
                 monitor.set_wallpaper(monitor_config.wallpaper.clone());
                 monitor.set_floating_layer_behaviour(monitor_config.floating_layer_behaviour);
 
-                monitor.update_workspaces_globals(offset);
+                monitor.update_workspaces_globals(offset, border_width, border_offset);
                 for (j, ws) in monitor.workspaces_mut().iter_mut().enumerate() {
                     if let Some(workspace_config) = monitor_config.workspaces.get_mut(j) {
                         if monitor_count > 1
@@ -1493,7 +1503,7 @@ impl StaticConfig {
                     m.set_workspace_padding(monitor_config.workspace_padding);
                     m.set_floating_layer_behaviour(monitor_config.floating_layer_behaviour);
 
-                    m.update_workspaces_globals(offset);
+                    m.update_workspaces_globals(offset, border_width, border_offset);
 
                     for (j, ws) in m.workspaces_mut().iter_mut().enumerate() {
                         if let Some(workspace_config) = monitor_config.workspaces.get(j) {
@@ -1509,7 +1519,7 @@ impl StaticConfig {
         wm.enforce_workspace_rules()?;
 
         if value.border == Some(true) {
-            border_manager::BORDER_ENABLED.store(true, Ordering::SeqCst);
+            wm.border_manager.enabled = true;
         }
 
         Ok(())
@@ -1518,7 +1528,7 @@ impl StaticConfig {
     pub fn reload(path: &PathBuf, wm: &mut WindowManager) -> Result<()> {
         let mut value = Self::read(path)?;
 
-        value.apply_globals()?;
+        wm.apply_globals(&mut value)?;
 
         let configs_with_preference: Vec<_> =
             DISPLAY_INDEX_PREFERENCES.read().keys().copied().collect();
@@ -1529,6 +1539,8 @@ impl StaticConfig {
         drop(workspace_matching_rules);
 
         let offset = wm.work_area_offset;
+        let border_width = wm.border_manager.border_width;
+        let border_offset = wm.border_manager.border_offset;
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
@@ -1581,7 +1593,7 @@ impl StaticConfig {
                 monitor.set_wallpaper(monitor_config.wallpaper.clone());
                 monitor.set_floating_layer_behaviour(monitor_config.floating_layer_behaviour);
 
-                monitor.update_workspaces_globals(offset);
+                monitor.update_workspaces_globals(offset, border_width, border_offset);
 
                 for (j, ws) in monitor.workspaces_mut().iter_mut().enumerate() {
                     if let Some(workspace_config) = monitor_config.workspaces.get(j) {
@@ -1668,7 +1680,7 @@ impl StaticConfig {
                     m.set_workspace_padding(monitor_config.workspace_padding);
                     m.set_floating_layer_behaviour(monitor_config.floating_layer_behaviour);
 
-                    m.update_workspaces_globals(offset);
+                    m.update_workspaces_globals(offset, border_width, border_offset);
 
                     for (j, ws) in m.workspaces_mut().iter_mut().enumerate() {
                         if let Some(workspace_config) = monitor_config.workspaces.get(j) {
@@ -1683,7 +1695,7 @@ impl StaticConfig {
 
         wm.enforce_workspace_rules()?;
 
-        border_manager::BORDER_ENABLED.store(value.border.unwrap_or(true), Ordering::SeqCst);
+        wm.border_manager.enabled = value.border.unwrap_or(true);
         wm.window_management_behaviour.current_behaviour =
             value.window_container_behaviour.unwrap_or_default();
         wm.window_management_behaviour.float_override = value.float_override.unwrap_or_default();

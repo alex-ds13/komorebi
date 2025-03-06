@@ -38,7 +38,6 @@ use komorebi::load_configuration;
 use komorebi::monitor_reconciliator;
 use komorebi::process_command::listen_for_commands;
 use komorebi::process_command::listen_for_commands_tcp;
-use komorebi::process_event::listen_for_events;
 use komorebi::process_movement::listen_for_movements;
 use komorebi::reaper;
 use komorebi::stackbar_manager;
