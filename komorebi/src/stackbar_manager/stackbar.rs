@@ -1,6 +1,3 @@
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
-use crate::border_manager::STYLE;
 use crate::container::Container;
 use crate::core::BorderStyle;
 use crate::core::Rect;
@@ -162,6 +159,9 @@ impl Stackbar {
         container_padding: i32,
         container: &mut Container,
         layout: &Rect,
+        border_width: i32,
+        border_offset: i32,
+        border_style: BorderStyle,
     ) -> color_eyre::Result<()> {
         let width = STACKBAR_TAB_WIDTH.load_consume();
         let height = STACKBAR_TAB_HEIGHT.load_consume();
@@ -175,7 +175,7 @@ impl Stackbar {
 
         let mut layout = *layout;
         let workspace_specific_offset =
-            BORDER_WIDTH.load_consume() + BORDER_OFFSET.load_consume() + container_padding;
+            border_width + border_offset + container_padding;
 
         layout.top -= workspace_specific_offset + STACKBAR_TAB_HEIGHT.load_consume();
         layout.left -= workspace_specific_offset;
@@ -233,7 +233,7 @@ impl Stackbar {
                     bottom: height,
                 };
 
-                match STYLE.load() {
+                match border_style {
                     BorderStyle::System => {
                         if *WINDOWS_11 {
                             // TODO: error handling
