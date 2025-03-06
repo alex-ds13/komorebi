@@ -165,6 +165,8 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
             MonitorNotification::WorkAreaChanged => {
                 tracing::debug!("handling work area changed notification");
                 let offset = wm.work_area_offset;
+                let border_width = wm.border_manager.border_width;
+                let border_offset = wm.border_manager.border_offset;
                 for monitor in wm.monitors_mut() {
                     let mut should_update = false;
 
@@ -184,7 +186,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
 
                     if should_update {
                         tracing::info!("updated work area for {}", monitor.device_id());
-                        monitor.update_focused_workspace(offset)?;
+                        monitor.update_focused_workspace(offset, border_width, border_offset)?;
                         border_manager::send_notification(None);
                     } else {
                         tracing::debug!(
@@ -197,6 +199,8 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
             MonitorNotification::ResolutionScalingChanged => {
                 tracing::debug!("handling resolution/scaling changed notification");
                 let offset = wm.work_area_offset;
+                let border_width = wm.border_manager.border_width;
+                let border_offset = wm.border_manager.border_offset;
                 for monitor in wm.monitors_mut() {
                     let mut should_update = false;
 
@@ -231,7 +235,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                             monitor.device_id()
                         );
 
-                        monitor.update_focused_workspace(offset)?;
+                        monitor.update_focused_workspace(offset, border_width, border_offset)?;
                         border_manager::send_notification(None);
                     } else {
                         tracing::debug!(
@@ -405,11 +409,17 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                     }
 
                     let offset = wm.work_area_offset;
+                    let border_width = wm.border_manager.border_width;
+                    let border_offset = wm.border_manager.border_offset;
 
                     for monitor in wm.monitors_mut() {
                         // If we have lost a monitor, update everything to filter out any jank
                         if initial_monitor_count != post_removal_monitor_count {
-                            monitor.update_focused_workspace(offset)?;
+                            monitor.update_focused_workspace(
+                                offset,
+                                border_width,
+                                border_offset,
+                            )?;
                         }
                     }
                 }
@@ -441,6 +451,8 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
 
                     let known_hwnds = wm.known_hwnds.clone();
                     let offset = wm.work_area_offset;
+                    let border_width = wm.border_manager.border_width;
+                    let border_offset = wm.border_manager.border_offset;
                     let mouse_follows_focus = wm.mouse_follows_focus;
                     let focused_monitor_idx = wm.focused_monitor_idx();
                     let focused_workspace_idx = wm.focused_workspace_idx()?;
@@ -622,7 +634,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                 // Restore windows from new monitor and update the focused
                                 // workspace
                                 m.load_focused_workspace(mouse_follows_focus)?;
-                                m.update_focused_workspace(offset)?;
+                                m.update_focused_workspace(offset, border_width, border_offset)?;
                             }
 
                             // Entries in the cache should only be used once; remove the entry there was a cache hit
