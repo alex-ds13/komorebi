@@ -12,11 +12,7 @@ use getset::Setters;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::border_manager::BORDER_ENABLED;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
 use crate::core::Rect;
-
 use crate::container::Container;
 use crate::ring::Ring;
 use crate::workspace::Workspace;
@@ -205,23 +201,18 @@ impl Monitor {
     }
 
     /// Updates the `globals` field of all workspaces
-    pub fn update_workspaces_globals(&mut self, offset: Option<Rect>) {
+    pub fn update_workspaces_globals(
+        &mut self,
+        offset: Option<Rect>,
+        border_width: i32,
+        border_offset: i32,
+    ) {
         let container_padding = self
             .container_padding()
             .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
         let workspace_padding = self
             .workspace_padding()
             .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-        let (border_width, border_offset) = {
-            let border_enabled = BORDER_ENABLED.load(Ordering::SeqCst);
-            if border_enabled {
-                let border_width = BORDER_WIDTH.load(Ordering::SeqCst);
-                let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
-                (border_width, border_offset)
-            } else {
-                (0, 0)
-            }
-        };
         let work_area = *self.work_area_size();
         let work_area_offset = self.work_area_offset.or(offset);
         let window_based_work_area_offset = self.window_based_work_area_offset();
@@ -244,23 +235,19 @@ impl Monitor {
     }
 
     /// Updates the `globals` field of workspace with index `workspace_idx`
-    pub fn update_workspace_globals(&mut self, workspace_idx: usize, offset: Option<Rect>) {
+    pub fn update_workspace_globals(
+        &mut self,
+        workspace_idx: usize,
+        offset: Option<Rect>,
+        border_width: i32,
+        border_offset: i32,
+    ) {
         let container_padding = self
             .container_padding()
             .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
         let workspace_padding = self
             .workspace_padding()
             .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-        let (border_width, border_offset) = {
-            let border_enabled = BORDER_ENABLED.load(Ordering::SeqCst);
-            if border_enabled {
-                let border_width = BORDER_WIDTH.load(Ordering::SeqCst);
-                let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
-                (border_width, border_offset)
-            } else {
-                (0, 0)
-            }
-        };
         let work_area = *self.work_area_size();
         let work_area_offset = self.work_area_offset.or(offset);
         let window_based_work_area_offset = self.window_based_work_area_offset();
@@ -522,7 +509,12 @@ impl Monitor {
         self.workspaces().len()
     }
 
-    pub fn update_focused_workspace(&mut self, offset: Option<Rect>) -> Result<()> {
+    pub fn update_focused_workspace(
+        &mut self,
+        offset: Option<Rect>,
+        border_width: i32,
+        border_offset: i32,
+    ) -> Result<()> {
         let offset = if self.work_area_offset().is_some() {
             self.work_area_offset()
         } else {
@@ -530,7 +522,7 @@ impl Monitor {
         };
 
         let focused_workspace_idx = self.focused_workspace_idx();
-        self.update_workspace_globals(focused_workspace_idx, offset);
+        self.update_workspace_globals(focused_workspace_idx, offset, border_width, border_offset);
         self.focused_workspace_mut()
             .ok_or_else(|| anyhow!("there is no workspace"))?
             .update()?;
