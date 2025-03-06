@@ -42,7 +42,6 @@ use komorebi::load_configuration;
 use komorebi::monitor_reconciliator;
 use komorebi::process_command::listen_for_commands;
 use komorebi::process_command::listen_for_commands_tcp;
-use komorebi::process_event::listen_for_events;
 use komorebi::process_movement::listen_for_movements;
 use komorebi::reaper;
 use komorebi::stackbar_manager;
@@ -321,6 +320,7 @@ fn main() -> eyre::Result<()> {
 
     reaper::listen_for_notifications_1(known_hwnds);
     komorebi::process_command::listen_for_commands_1(command_listener);
+    check_mdm_enrollment();
 
     wm.retile_all(false)?;
 
@@ -384,4 +384,30 @@ fn main() -> eyre::Result<()> {
     let _ = std::fs::remove_file(socket);
 
     std::process::exit(130);
+}
+
+#[tracing::instrument]
+pub fn check_mdm_enrollment() {
+    use std::process::Command;
+    use std::sync::atomic::Ordering;
+    use crate::splash;
+    use crate::splash::mdm_enrollment;
+
+    std::thread::spawn(|| {
+        loop {
+            if let Ok((mdm, server)) = mdm_enrollment() {
+                #[allow(clippy::collapsible_if)]
+                if mdm && splash::should().map(|f| f.into()).unwrap_or(true) {
+                    let mut args = vec!["splash".to_string()];
+                    if let Some(server) = server {
+                        args.push(server);
+                    }
+
+                    let _ = Command::new("komorebic").args(&args).spawn();
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(14400));
+        }
+    });
 }

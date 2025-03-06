@@ -25,8 +25,6 @@ use crate::TRAY_AND_MULTI_WINDOW_IDENTIFIERS;
 use crate::WORKSPACE_MATCHING_RULES;
 use crate::WindowContainerBehaviour;
 use crate::WindowManager;
-use crate::border_manager;
-use crate::border_manager::STYLE;
 use crate::config_generation::MatchingRule;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::monitor::Monitor;
@@ -154,33 +152,33 @@ pub struct GlobalState {
     pub current_virtual_desktop_id: Option<Vec<u8>>,
 }
 
-impl Default for GlobalState {
-    fn default() -> Self {
+impl From<&WindowManager> for GlobalState {
+    fn from(value: &WindowManager) -> Self {
         Self {
-            border_enabled: border_manager::BORDER_ENABLED.load(Ordering::SeqCst),
+            border_enabled: value.border_manager.enabled,
             border_colours: BorderColours {
                 single: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::FOCUSED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.single_colour,
                 ))),
                 stack: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::STACK.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.stack_colour,
                 ))),
                 monocle: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::MONOCLE.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.monocle_colour,
                 ))),
                 floating: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::FLOATING.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.floating_colour,
                 ))),
                 unfocused: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::UNFOCUSED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.unfocused_colour,
                 ))),
                 unfocused_locked: Option::from(Colour::Rgb(Rgb::from(
-                    border_manager::UNFOCUSED_LOCKED.load(Ordering::SeqCst),
+                    value.border_manager.kind_colours.unfocused_locked_colour,
                 ))),
             },
-            border_style: STYLE.load(),
-            border_offset: border_manager::BORDER_OFFSET.load(Ordering::SeqCst),
-            border_width: border_manager::BORDER_WIDTH.load(Ordering::SeqCst),
+            border_style: value.border_manager.border_style,
+            border_offset: value.border_manager.border_offset,
+            border_width: value.border_manager.border_width,
             stackbar_mode: STACKBAR_MODE.load(),
             stackbar_label: STACKBAR_LABEL.load(),
             stackbar_focused_text_colour: Colour::Rgb(Rgb::from(

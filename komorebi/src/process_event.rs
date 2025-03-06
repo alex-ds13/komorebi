@@ -1,11 +1,8 @@
-use std::process::Command;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use color_eyre::eyre;
 use color_eyre::eyre::OptionExt;
 use crossbeam_utils::atomic::AtomicConsume;
-use parking_lot::Mutex;
 
 use crate::core::OperationDirection;
 use crate::core::Rect;
@@ -24,12 +21,8 @@ use crate::TRAY_AND_MULTI_WINDOW_IDENTIFIERS;
 use crate::VirtualDesktopNotification;
 use crate::Window;
 use crate::border_manager;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
 use crate::current_virtual_desktop;
 use crate::notify_subscribers;
-use crate::splash;
-use crate::splash::mdm_enrollment;
 use crate::stackbar_manager;
 use crate::state::State;
 use crate::transparency_manager;
@@ -40,48 +33,6 @@ use crate::window_manager_event::WindowManagerEvent;
 use crate::windows_api::WindowsApi;
 use crate::winevent::WinEvent;
 use crate::workspace::WorkspaceLayer;
-
-#[tracing::instrument]
-pub fn listen_for_events(wm: Arc<Mutex<WindowManager>>) {
-    let receiver = wm.lock().incoming_events.clone();
-
-    std::thread::spawn(|| {
-        loop {
-            if let Ok((mdm, server)) = mdm_enrollment() {
-                #[allow(clippy::collapsible_if)]
-                if mdm && splash::should().map(|f| f.into()).unwrap_or(true) {
-                    let mut args = vec!["splash".to_string()];
-                    if let Some(server) = server {
-                        args.push(server);
-                    }
-
-                    let _ = Command::new("komorebic").args(&args).spawn();
-                }
-            }
-
-            std::thread::sleep(std::time::Duration::from_secs(14400));
-        }
-    });
-
-    std::thread::spawn(move || {
-        tracing::info!("listening");
-        loop {
-            if let Ok(event) = receiver.recv() {
-                let mut guard = wm.lock();
-                match guard.process_event(event) {
-                    Ok(()) => {}
-                    Err(error) => {
-                        if cfg!(debug_assertions) {
-                            tracing::error!("{:?}", error)
-                        } else {
-                            tracing::error!("{}", error)
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
 
 impl WindowManager {
     #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
@@ -770,8 +721,8 @@ impl WindowManager {
                         }
 
                         // TODO: Determine if this is still needed
-                        let top_left_constant = BORDER_WIDTH.load(Ordering::SeqCst)
-                            + BORDER_OFFSET.load(Ordering::SeqCst);
+                        let top_left_constant =
+                            self.border_manager.border_width + self.border_manager.border_offset;
 
                         if resize.right != 0
                             && (resize.left == top_left_constant || resize.left == 0)
@@ -896,6 +847,8 @@ impl WindowManager {
         self.focus_monitor(m_idx)?;
         let mouse_follows_focus = self.mouse_follows_focus;
         let offset = self.work_area_offset;
+        let border_width = self.border_manager.border_width;
+        let border_offset = self.border_manager.border_offset;
 
         if let Some(monitor) = self.focused_monitor_mut() {
             if ws_idx != monitor.focused_workspace_idx() {
@@ -939,7 +892,7 @@ impl WindowManager {
                 workspace.layer = layer;
             }
             monitor.load_focused_workspace(mouse_follows_focus)?;
-            monitor.update_focused_workspace(offset)?;
+            monitor.update_focused_workspace(offset, border_width, border_offset)?;
         }
 
         Ok(())
