@@ -10,7 +10,6 @@
 use std::env::temp_dir;
 use std::net::Shutdown;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "deadlock_detection")]
 use std::time::Duration;
@@ -23,9 +22,7 @@ use crossbeam_utils::Backoff;
 use komorebi::animation::ANIMATION_ENABLED_GLOBAL;
 use komorebi::animation::ANIMATION_ENABLED_PER_ANIMATION;
 use komorebi::animation::AnimationEngine;
-use komorebi::komorebi::Komorebi;
 use komorebi::replace_env_in_path;
-use parking_lot::Mutex;
 use parking_lot::deadlock;
 use serde::Deserialize;
 use sysinfo::Process;
@@ -40,7 +37,6 @@ use komorebi::DATA_DIR;
 use komorebi::HOME_DIR;
 use komorebi::INITIAL_CONFIGURATION_LOADED;
 use komorebi::SESSION_ID;
-use komorebi::border_manager;
 use komorebi::focus_manager;
 use komorebi::load_configuration;
 use komorebi::monitor_reconciliator;
@@ -328,13 +324,8 @@ fn main() -> eyre::Result<()> {
 
     wm.retile_all(false)?;
 
-    let mut komorebi = Komorebi {
-        window_manager: wm,
-        border_manager: Default::default(),
-    };
-
-    // Start the komorebi runtime
-    komorebi.run();
+    // Start the runtime
+    wm.run();
 
     // border_manager::listen_for_notifications(wm.clone());
     // stackbar_manager::listen_for_notifications(wm.clone());
@@ -370,12 +361,12 @@ fn main() -> eyre::Result<()> {
 
     tracing::error!("received ctrl-c, restoring all hidden windows and terminating process");
 
-    let state = State::from(&komorebi.window_manager);
+    let state = State::from(&wm);
     std::fs::write(dumped_state, serde_json::to_string_pretty(&state)?)?;
 
     ANIMATION_ENABLED_PER_ANIMATION.lock().clear();
     ANIMATION_ENABLED_GLOBAL.store(false, Ordering::SeqCst);
-    komorebi.window_manager.restore_all_windows(false)?;
+    wm.restore_all_windows(false)?;
     AnimationEngine::wait_for_all_animations();
 
     if WindowsApi::focus_follows_mouse()? {

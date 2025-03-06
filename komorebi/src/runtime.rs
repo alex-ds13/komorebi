@@ -1,7 +1,7 @@
 use crate::border_manager;
-use crate::komorebi::Komorebi;
 use crate::reaper;
 use crate::SocketMessage;
+use crate::WindowManager;
 use crate::WindowManagerEvent;
 
 use std::sync::OnceLock;
@@ -46,7 +46,7 @@ pub enum Message {
     Reaper(reaper::ReaperNotification),
 }
 
-impl Komorebi {
+impl WindowManager {
     pub fn run(&mut self) {
         let receiver = event_rx();
 
@@ -56,14 +56,14 @@ impl Komorebi {
                 tracing::info!("Runtime message received: {:?}", &message);
                 match message {
                     Message::Event(event) => {
-                        if let Err(error) = self.window_manager.process_event(event) {
+                        if let Err(error) = self.process_event(event) {
                             tracing::error!("Error from 'process_event': {}", error);
                         }
                     }
                     Message::Command(messages, stream) => {
                         for message in messages {
                             if let Ok(reply) = stream.try_clone() {
-                                if self.window_manager.is_paused
+                                if self.is_paused
                                     && !matches!(
                                         message,
                                         SocketMessage::TogglePause
@@ -74,7 +74,7 @@ impl Komorebi {
                                 {
                                     tracing::trace!("ignoring while paused");
                                 } else if let Err(error) =
-                                    self.window_manager.process_command(message.clone(), reply)
+                                    self.process_command(message.clone(), reply)
                                 {
                                     tracing::error!("Error from 'process_command': {}", error);
                                 }
@@ -84,8 +84,10 @@ impl Komorebi {
                         }
                     }
                     Message::Border(message) => {
-                        if let Err(error) = self.border_manager.update(&mut self.window_manager, message) {
-                            tracing::error!("Error from 'handle_border_notification': {}", error);
+                        if let Err(error) =
+                            self.border_manager.update(message, self.to_border_info())
+                        {
+                            tracing::error!("Error from 'border_manager.update()': {}", error);
                         }
                     }
                     Message::Reaper(notification) => {
