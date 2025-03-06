@@ -61,11 +61,8 @@ lazy_static! {
 pub struct BorderManager {
     pub borders: HashMap<String, Box<Border>>,
     pub windows_borders: HashMap<isize, String>,
-    pub previous_snapshot: Ring<Monitor>,
-    pub previous_pending_move_op: Option<(usize, usize, isize)>,
-    pub previous_is_paused: bool,
-    pub previous_tracking_hwnd: Option<isize>,
-    pub previous_layer: WorkspaceLayer,
+    pub tracking_hwnd: Option<isize>,
+    pub wm_info: WindowManagerInfo,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,14 +111,14 @@ impl BorderInfo {
 impl BorderManager {
     pub fn update(
         &mut self,
-        wm: &mut WindowManager,
         message: BorderMessage,
+        wm_info: WindowManagerInfo,
     ) -> color_eyre::Result<()> {
         match message {
             BorderMessage::Update(tracking_hwnd) => {
-                self.handle_border_update(wm, tracking_hwnd, false)
+                self.handle_border_update(wm_info, tracking_hwnd, false)
             }
-            BorderMessage::ForceUpdate => self.handle_border_update(wm, None, true),
+            BorderMessage::ForceUpdate => self.handle_border_update(wm_info, None, true),
             BorderMessage::PassEvent(tracking_hwnd, event) => {
                 let border_info = self.window_border(tracking_hwnd);
 
@@ -175,38 +172,28 @@ impl BorderManager {
 
     fn handle_border_update(
         &mut self,
-        wm: &mut WindowManager,
+        wm_info: WindowManagerInfo,
         tracking_hwnd: Option<isize>,
         forced_update: bool,
     ) -> color_eyre::Result<()> {
-        // Check the wm state every time we receive a notification
-        let is_paused = wm.is_paused;
-        let focused_monitor_idx = wm.focused_monitor_idx();
-        let focused_workspace_idx =
-            wm.monitors.elements()[focused_monitor_idx].focused_workspace_idx();
-        let monitors = wm.monitors.clone();
-        let pending_move_op = *wm.pending_move_op;
-        let floating_window_hwnds = wm.monitors.elements()[focused_monitor_idx].workspaces()
-            [focused_workspace_idx]
-            .floating_windows()
-            .iter()
-            .map(|w| w.hwnd)
-            .collect::<Vec<_>>();
-        let workspace_layer = *wm.monitors.elements()[focused_monitor_idx].workspaces()
-            [focused_workspace_idx]
-            .layer();
+        // Check the wm info every time we receive an update
+        let is_paused = wm_info.is_paused;
+        let focused_monitor_idx = wm_info.focused_monitor_idx;
+        let pending_move_op = wm_info.pending_move_op;
+        let workspace_layer = wm_info.workspace_layer;
+
         let foreground_window = WindowsApi::foreground_window().unwrap_or_default();
 
-        let previous_snapshot = &self.previous_snapshot;
-        let previous_pending_move_op = &self.previous_pending_move_op;
-        let previous_is_paused = &self.previous_is_paused;
-        let previous_tracking_hwnd = &self.previous_tracking_hwnd;
-        let previous_layer = &self.previous_layer;
+        let previous_monitors = &self.wm_info.monitors;
+        let previous_pending_move_op = &self.wm_info.pending_move_op;
+        let previous_is_paused = &self.wm_info.is_paused;
+        let previous_tracking_hwnd = &self.tracking_hwnd;
+        let previous_layer = &self.wm_info.workspace_layer;
         let layer_changed = *previous_layer != workspace_layer;
 
         match IMPLEMENTATION.load() {
             BorderImplementation::Windows => {
-                'monitors: for (monitor_idx, m) in monitors.elements().iter().enumerate() {
+                'monitors: for (monitor_idx, m) in wm_info.monitors.elements().iter().enumerate() {
                     // Only operate on the focused workspace of each monitor
                     if let Some(ws) = m.focused_workspace() {
                         // Handle the monocle container separately
@@ -274,7 +261,7 @@ impl BorderManager {
                 let mut should_process_notification = true;
 
                 if !forced_update {
-                    if monitors == *previous_snapshot
+                    if wm_info.monitors == *previous_monitors
                         // handle the window dragging edge case
                         && pending_move_op == *previous_pending_move_op
                     {
@@ -298,7 +285,7 @@ impl BorderManager {
 
                     // when we switch focus to/from a floating window
                     let switch_focus_to_from_floating_window =
-                        floating_window_hwnds.iter().any(|fw| {
+                        wm_info.floating_window_hwnds.iter().any(|fw| {
                             // if we switch focus to a floating window
                             fw == &tracking_hwnd.unwrap_or_default() ||
                                 // if there is any floating window with a `WindowKind::Floating` border
@@ -351,11 +338,11 @@ impl BorderManager {
 
                     self.windows_borders.clear();
 
-                    self.previous_is_paused = is_paused;
+                    self.wm_info.is_paused = is_paused;
                     return Ok(());
                 }
 
-                'monitors: for (monitor_idx, m) in monitors.elements().iter().enumerate() {
+                'monitors: for (monitor_idx, m) in wm_info.monitors.elements().iter().enumerate() {
                     // Only operate on the focused workspace of each monitor
                     if let Some(ws) = m.focused_workspace() {
                         // Workspaces with tiling disabled don't have borders
@@ -398,7 +385,9 @@ impl BorderManager {
                             // Update the borders tracking_hwnd in case it changed and remove the
                             // old `tracking_hwnd` from `WINDOWS_BORDERS` if needed.
                             if border.tracking_hwnd != focused_window_hwnd {
-                                if let Some(previous) = self.windows_borders.get(&border.tracking_hwnd) {
+                                if let Some(previous) =
+                                    self.windows_borders.get(&border.tracking_hwnd)
+                                {
                                     // Only remove the border from `windows_borders` if it
                                     // still corresponds to the same border, if doesn't then
                                     // it means it was already updated by another border for
@@ -530,7 +519,9 @@ impl BorderManager {
                             // Update the borders `tracking_hwnd` in case it changed and remove the
                             // old `tracking_hwnd` from `WINDOWS_BORDERS` if needed.
                             if border.tracking_hwnd != focused_window_hwnd {
-                                if let Some(previous) = self.windows_borders.get(&border.tracking_hwnd) {
+                                if let Some(previous) =
+                                    self.windows_borders.get(&border.tracking_hwnd)
+                                {
                                     // Only remove the border from `windows_borders` if it
                                     // still corresponds to the same border, if doesn't then
                                     // it means it was already updated by another border for
@@ -591,11 +582,8 @@ impl BorderManager {
             }
         }
 
-        self.previous_snapshot = monitors;
-        self.previous_pending_move_op = pending_move_op;
-        self.previous_is_paused = is_paused;
-        self.previous_tracking_hwnd = tracking_hwnd;
-        self.previous_layer = workspace_layer;
+        self.wm_info = wm_info;
+        self.tracking_hwnd = tracking_hwnd;
 
         Ok(())
     }
@@ -798,10 +786,12 @@ pub fn send_notification(hwnd: Option<isize>) {
     runtime::send_message(BorderMessage::Update(hwnd));
 }
 
+/// Sends an `BorderMessage::ForceUpdate` to the runtime to force update all the borders
 pub fn send_force_update() {
     runtime::send_message(BorderMessage::ForceUpdate);
 }
 
+/// Gets the colour as a `u32` from the `WindowKind`
 fn window_kind_colour(focus_kind: WindowKind) -> u32 {
     match focus_kind {
         WindowKind::Unfocused => UNFOCUSED.load(Ordering::Relaxed),
@@ -813,9 +803,58 @@ fn window_kind_colour(focus_kind: WindowKind) -> u32 {
     }
 }
 
+/// Send a notify message with `event` to the border window with handle `border_hwnd`. It also
+/// passes the tracking window `hwnd` as the `LPARAM`.
 fn notify_border(border_hwnd: HWND, event: u32, hwnd: isize) {
     unsafe {
         let _ = SendNotifyMessageW(border_hwnd, event, WPARAM(0), LPARAM(hwnd));
+    }
+}
+
+/// Represents the info from the `WindowManager` that is needed by the `BorderManager`
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct WindowManagerInfo {
+    pub is_paused: bool,
+    pub focused_monitor_idx: usize,
+    pub monitors: Ring<Monitor>,
+    pub pending_move_op: Option<(usize, usize, isize)>,
+    pub floating_window_hwnds: Vec<isize>,
+    pub workspace_layer: WorkspaceLayer,
+}
+
+impl From<&WindowManager> for WindowManagerInfo {
+    fn from(value: &WindowManager) -> Self {
+        let is_paused = value.is_paused;
+        let focused_monitor_idx = value.focused_monitor_idx();
+        let focused_workspace_idx =
+            value.monitors.elements()[focused_monitor_idx].focused_workspace_idx();
+        let monitors = value.monitors.clone();
+        let pending_move_op = *value.pending_move_op;
+        let floating_window_hwnds = value.monitors.elements()[focused_monitor_idx].workspaces()
+            [focused_workspace_idx]
+            .floating_windows()
+            .iter()
+            .map(|w| w.hwnd)
+            .collect::<Vec<_>>();
+        let workspace_layer = *value.monitors.elements()[focused_monitor_idx].workspaces()
+            [focused_workspace_idx]
+            .layer();
+
+        WindowManagerInfo {
+            is_paused,
+            focused_monitor_idx,
+            monitors,
+            pending_move_op,
+            floating_window_hwnds,
+            workspace_layer,
+        }
+    }
+}
+
+impl WindowManager {
+    /// Returns the info from the `WindowManager` that is needed by the `BorderManager`
+    pub fn to_border_info(&self) -> WindowManagerInfo {
+        self.into()
     }
 }
 

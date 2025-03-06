@@ -1,7 +1,6 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::border_manager;
-use crate::komorebi::Komorebi;
 use crate::notify_subscribers;
 use crate::runtime;
 use crate::winevent::WinEvent;
@@ -70,9 +69,7 @@ pub fn listen_for_notifications(
     });
 }
 
-pub fn listen_for_notifications_1(
-    known_hwnds: HashMap<isize, (usize, usize)>,
-) {
+pub fn listen_for_notifications_1(known_hwnds: HashMap<isize, (usize, usize)>) {
     watch_for_orphans(known_hwnds);
 
     std::thread::spawn(move || loop {
@@ -87,7 +84,7 @@ pub fn listen_for_notifications_1(
     });
 }
 
-impl Komorebi {
+impl WindowManager {
     pub fn handle_reaper_notification(
         &mut self,
         notification: ReaperNotification,
@@ -97,7 +94,7 @@ impl Komorebi {
         let mut update_borders = false;
 
         for (hwnd, (m_idx, w_idx)) in orphan_hwnds.iter() {
-            if let Some(monitor) = self.window_manager.monitors_mut().get_mut(*m_idx) {
+            if let Some(monitor) = self.monitors_mut().get_mut(*m_idx) {
                 let focused_workspace_idx = monitor.focused_workspace_idx();
 
                 if let Some(workspace) = monitor.workspaces_mut().get_mut(*w_idx) {
@@ -128,7 +125,7 @@ impl Komorebi {
                 }
             }
 
-            self.window_manager.known_hwnds.remove(hwnd);
+            self.known_hwnds.remove(hwnd);
 
             let window = Window::from(*hwnd);
             notify_subscribers(
@@ -137,7 +134,7 @@ impl Komorebi {
                         WinEvent::ObjectDestroy,
                         window,
                     )),
-                    state: self.window_manager.as_ref().into(),
+                    state: self.as_ref().into(),
                 },
                 true,
             )?;
@@ -155,7 +152,7 @@ impl Komorebi {
             .create(true)
             .open(hwnd_json)?;
 
-        serde_json::to_writer_pretty(&file, &self.window_manager.known_hwnds.keys().collect::<Vec<_>>())?;
+        serde_json::to_writer_pretty(&file, &self.known_hwnds.keys().collect::<Vec<_>>())?;
 
         Ok(())
     }

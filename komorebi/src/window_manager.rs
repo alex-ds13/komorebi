@@ -123,6 +123,7 @@ pub struct WindowManager {
     pub uncloack_to_ignore: usize,
     /// Maps each known window hwnd to the (monitor, workspace) index pair managing it
     pub known_hwnds: HashMap<isize, (usize, usize)>,
+    pub border_manager: border_manager::BorderManager,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -450,6 +451,7 @@ impl WindowManager {
             already_moved_window_handles: Arc::new(Mutex::new(HashSet::new())),
             uncloack_to_ignore: 0,
             known_hwnds: HashMap::new(),
+            border_manager: Default::default(),
         })
     }
 
