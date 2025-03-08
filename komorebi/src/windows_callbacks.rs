@@ -105,7 +105,7 @@ pub extern "system" fn win_event_hook(
         WinEvent::ObjectLocationChange | WinEvent::ObjectDestroy
     ) && !has_filtered_style(hwnd)
     {
-        messages.push(BorderMessage::PassEvent(hwnd.0 as isize, event).into());
+        runtime::send_message(BorderMessage::PassEvent(hwnd.0 as isize, event));
     }
 
     // sometimes the border focus state and colors don't get updated because this event comes too
