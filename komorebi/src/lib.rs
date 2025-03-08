@@ -326,6 +326,7 @@ pub fn notify_subscribers(notification: Notification, state_has_been_modified: b
                 Ok(mut stream) => {
                     tracing::debug!("pushed notification to subscriber: {socket}");
                     stream.write_all(notification.as_bytes())?;
+                    tracing::debug!("!!!!!!! DONE PUSHING !!!!!!!");
                 }
                 Err(_) => {
                     stale_sockets.push(socket.clone());
@@ -346,6 +347,7 @@ pub fn notify_subscribers(notification: Notification, state_has_been_modified: b
         }
     }
 
+    tracing::debug!("!!!!!!!!!! FINNISHED WITH SOCKETS, MOVING TO PIPES !!!!!!!!!!!!!");
     let mut stale_pipes = vec![];
     let mut pipes = SUBSCRIPTION_PIPES.lock();
     for (subscriber, pipe) in &mut *pipes {
