@@ -33,6 +33,7 @@ use crate::core::config_generation::IdWithIdentifier;
 use crate::core::config_generation::MatchingRule;
 use crate::core::config_generation::MatchingStrategy;
 use crate::focus_manager;
+use crate::runtime;
 use crate::stackbar_manager;
 use crate::styles::ExtendedWindowStyle;
 use crate::styles::WindowStyle;
@@ -484,7 +485,7 @@ impl Window {
         WindowsApi::is_window_visible(self.hwnd)
     }
 
-    pub fn hide_with_border(self, hide_border: bool) {
+    pub fn internal_hide(self) {
         let mut programmatically_hidden_hwnds = HIDDEN_HWNDS.lock();
         if !programmatically_hidden_hwnds.contains(&self.hwnd) {
             programmatically_hidden_hwnds.push(self.hwnd);
@@ -496,8 +497,13 @@ impl Window {
             HidingBehaviour::Minimize => WindowsApi::minimize_window(self.hwnd),
             HidingBehaviour::Cloak => SetCloak(self.hwnd(), 1, 2),
         }
+    }
+
+    pub fn hide_with_border(self, hide_border: bool) {
         if hide_border {
-            border_manager::hide_border(self.hwnd);
+            runtime::send_message(runtime::WindowWithBorderAction::Hide(self.hwnd));
+        } else {
+            self.internal_hide();
         }
     }
 
@@ -505,7 +511,7 @@ impl Window {
         self.hide_with_border(true);
     }
 
-    pub fn restore_with_border(self, restore_border: bool) {
+    pub fn internal_restore(self) {
         let mut programmatically_hidden_hwnds = HIDDEN_HWNDS.lock();
         if let Some(idx) = programmatically_hidden_hwnds
             .iter()
@@ -521,8 +527,13 @@ impl Window {
             }
             HidingBehaviour::Cloak => SetCloak(self.hwnd(), 1, 0),
         }
+    }
+
+    pub fn restore_with_border(self, restore_border: bool) {
         if restore_border {
-            border_manager::show_border(self.hwnd);
+            runtime::send_message(runtime::WindowWithBorderAction::Show(self.hwnd));
+        } else {
+            self.internal_restore();
         }
     }
 
