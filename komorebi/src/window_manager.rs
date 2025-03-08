@@ -1687,7 +1687,7 @@ impl WindowManager {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn restore_all_windows(&mut self, ignore_restore: bool) -> Result<()> {
+    pub fn restore_all_windows(&self, ignore_restore: bool) -> Result<()> {
         tracing::info!("restoring all hidden windows");
 
         let no_titlebar = NO_TITLEBAR.lock();
@@ -1695,8 +1695,8 @@ impl WindowManager {
         let known_transparent_hwnds = transparency_manager::known_hwnds();
         let border_implementation = self.border_manager.border_implementation;
 
-        for monitor in self.monitors_mut() {
-            for workspace in monitor.workspaces_mut() {
+        for monitor in self.monitors() {
+            for workspace in monitor.workspaces() {
                 if let Some(monocle) = workspace.monocle_container() {
                     for window in monocle.windows() {
                         if matches!(border_implementation, BorderImplementation::Windows) {
@@ -1705,8 +1705,8 @@ impl WindowManager {
                     }
                 }
 
-                for containers in workspace.containers_mut() {
-                    for window in containers.windows_mut() {
+                for containers in workspace.containers() {
+                    for window in containers.windows() {
                         let should_remove_titlebar_for_window = should_act(
                             &window.title().unwrap_or_default(),
                             &window.exe().unwrap_or_default(),
