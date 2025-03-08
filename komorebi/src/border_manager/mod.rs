@@ -104,9 +104,9 @@ pub enum BorderMessage {
     DestroyAll,
 }
 
-impl From<BorderMessage> for runtime::Message {
+impl From<BorderMessage> for runtime::Control {
     fn from(value: BorderMessage) -> Self {
-        runtime::Message::Border(value)
+        runtime::Control::Border(value)
     }
 }
 
@@ -716,7 +716,7 @@ impl BorderManager {
 
     /// Check if some window with `hwnd` has a border attached to it, if it does returns the
     /// `BorderInfo` related to it's border.
-    fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
+    pub fn window_border(&self, hwnd: isize) -> Option<BorderInfo> {
         self.windows_borders.get(&hwnd).and_then(|id| {
             self.borders.get(id).map(|b| BorderInfo {
                 border_hwnd: b.hwnd,

@@ -30,6 +30,12 @@ lazy_static! {
 #[derive(Debug)]
 pub struct ReaperNotification(pub HashMap<isize, (usize, usize)>);
 
+impl From<ReaperNotification> for runtime::Control {
+    fn from(value: ReaperNotification) -> Self {
+        runtime::Control::Reaper(value)
+    }
+}
+
 static CHANNEL: OnceLock<(Sender<ReaperNotification>, Receiver<ReaperNotification>)> =
     OnceLock::new();
 
@@ -164,7 +170,7 @@ fn handle_notifications_1() -> color_eyre::Result<()> {
     let receiver = event_rx();
 
     for notification in receiver {
-        runtime::send_message(runtime::Message::Reaper(notification));
+        runtime::send_message(notification);
     }
 
     Ok(())

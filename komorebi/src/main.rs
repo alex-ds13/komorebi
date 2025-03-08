@@ -268,16 +268,9 @@ fn main() -> Result<()> {
             config.display()
         );
 
-        StaticConfig::preload(
-            config,
-            winevent_listener::event_rx(),
-            None,
-        )?
+        StaticConfig::preload(config, winevent_listener::event_rx(), None)?
     } else {
-        WindowManager::new(
-            winevent_listener::event_rx(),
-            None,
-        )?
+        WindowManager::new(winevent_listener::event_rx(), None)?
     };
 
     wm.init()?;
@@ -315,7 +308,8 @@ fn main() -> Result<()> {
     }
 
     let known_hwnds = wm.known_hwnds.clone();
-    let command_listener = wm.command_listener
+    let command_listener = wm
+        .command_listener
         .try_clone()
         .expect("could not clone unix listener");
 
@@ -326,7 +320,6 @@ fn main() -> Result<()> {
 
     // Start the runtime
     wm.run();
-
 
     // border_manager::listen_for_notifications(wm.clone());
     // stackbar_manager::listen_for_notifications(wm.clone());
@@ -349,25 +342,8 @@ fn main() -> Result<()> {
     //     listen_for_movements(wm.clone());
     // }
 
-    let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
-    ctrlc::set_handler(move || {
-        ctrlc_sender
-            .send(())
-            .expect("could not send signal on ctrl-c channel");
-    })?;
-
-    ctrlc_receiver
-        .recv()
-        .expect("could not receive signal on ctrl-c channel");
-
-    tracing::error!("received ctrl-c, restoring all hidden windows and terminating process");
-
-    let state = State::from(&wm);
-    std::fs::write(dumped_state, serde_json::to_string_pretty(&state)?)?;
-
     ANIMATION_ENABLED_PER_ANIMATION.lock().clear();
     ANIMATION_ENABLED_GLOBAL.store(false, Ordering::SeqCst);
-    wm.restore_all_windows(false)?;
     AnimationEngine::wait_for_all_animations();
 
     if WindowsApi::focus_follows_mouse()? {
