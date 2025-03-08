@@ -378,6 +378,9 @@ impl BorderManager {
                 let offset = self.border_offset;
                 let kind_colours = self.kind_colours;
 
+                println!("########### LEN: {}", self.borders.len());
+                println!("########### LEN: {}", self.windows_borders.len());
+
                 'monitors: for (monitor_idx, m) in wm_info.monitors.elements().iter().enumerate() {
                     // Only operate on the focused workspace of each monitor
                     if let Some(ws) = m.focused_workspace() {
@@ -629,6 +632,9 @@ impl BorderManager {
 
                             self.windows_borders.insert(focused_window_hwnd, id);
                         }
+
+                        println!("########### LEN: {}", self.borders.len());
+                        println!("########### LEN: {}", self.windows_borders.len());
 
                         self.handle_floating_borders(
                             ws,
