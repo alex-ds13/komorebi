@@ -268,28 +268,23 @@ fn main() -> Result<()> {
         .expect("could not clone unix listener");
 
     reaper::watch_for_orphans(known_hwnds);
-    komorebi::process_command::listen_for_commands_1(command_listener);
+    listen_for_commands(command_listener);
+
+    if let Some(port) = opts.tcp_port {
+        listen_for_commands_tcp(port);
+    }
 
     wm.retile_all(false)?;
 
     // Start the runtime
     wm.run();
 
-    // border_manager::listen_for_notifications(wm.clone());
     // stackbar_manager::listen_for_notifications(wm.clone());
     // transparency_manager::listen_for_notifications(wm.clone());
-    // workspace_reconciliator::listen_for_notifications(wm.clone());
     // monitor_reconciliator::listen_for_notifications(wm.clone())?;
-    // reaper::listen_for_notifications(wm.clone(), wm.lock().known_hwnds.clone());
     // focus_manager::listen_for_notifications(wm.clone());
     // theme_manager::listen_for_notifications();
 
-    // listen_for_commands(wm.clone());
-    //
-    // if let Some(port) = opts.tcp_port {
-    //     listen_for_commands_tcp(wm.clone(), port);
-    // }
-    //
     // listen_for_events(wm.clone());
 
     // if CUSTOM_FFM.load(Ordering::SeqCst) {
