@@ -4,7 +4,6 @@ use color_eyre::Result;
 use komorebi_themes::colour::Rgb;
 use miow::pipe::connect;
 use net2::TcpStreamExt;
-use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -16,7 +15,6 @@ use std::net::TcpStream;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 use uds_windows::UnixListener;
 use uds_windows::UnixStream;
@@ -52,6 +50,7 @@ use crate::default_layout::LayoutOptions;
 use crate::default_layout::ScrollingLayoutOptions;
 use crate::monitor::MonitorInformation;
 use crate::notify_subscribers;
+use crate::runtime;
 use crate::stackbar_manager;
 use crate::stackbar_manager::STACKBAR_FONT_FAMILY;
 use crate::stackbar_manager::STACKBAR_FONT_SIZE;
@@ -100,7 +99,7 @@ use stackbar_manager::STACKBAR_TAB_WIDTH;
 use stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 
 #[tracing::instrument]
-pub fn listen_for_commands_1(command_listener: UnixListener) {
+pub fn listen_for_commands(command_listener: UnixListener) {
     std::thread::spawn(move || loop {
         let listener = command_listener
             .try_clone()
@@ -115,7 +114,7 @@ pub fn listen_for_commands_1(command_listener: UnixListener) {
                                 Ok(()) => {}
                                 Err(error) => tracing::error!("{}", error),
                             }
-                            match read_commands_uds_1(stream) {
+                            match read_commands_uds(stream) {
                                 Ok(()) => {}
                                 Err(error) => tracing::error!("{}", error),
                             }
@@ -133,50 +132,8 @@ pub fn listen_for_commands_1(command_listener: UnixListener) {
         tracing::error!("restarting failed thread");
     });
 }
-
 #[tracing::instrument]
-pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
-    std::thread::spawn(move || loop {
-        let wm = wm.clone();
-
-        let _ = std::thread::spawn(move || {
-            let listener = wm
-                .lock()
-                .command_listener
-                .try_clone()
-                .expect("could not clone unix listener");
-
-            tracing::info!("listening on komorebi.sock");
-            for client in listener.incoming() {
-                match client {
-                    Ok(stream) => {
-                        let wm_clone = wm.clone();
-                        std::thread::spawn(move || {
-                            match stream.set_read_timeout(Some(Duration::from_secs(1))) {
-                                Ok(()) => {}
-                                Err(error) => tracing::error!("{}", error),
-                            }
-                            match read_commands_uds(&wm_clone, stream) {
-                                Ok(()) => {}
-                                Err(error) => tracing::error!("{}", error),
-                            }
-                        });
-                    }
-                    Err(error) => {
-                        tracing::error!("{}", error);
-                        break;
-                    }
-                }
-            }
-        })
-        .join();
-
-        tracing::error!("restarting failed thread");
-    });
-}
-
-#[tracing::instrument]
-pub fn listen_for_commands_tcp(wm: Arc<Mutex<WindowManager>>, port: usize) {
+pub fn listen_for_commands_tcp(port: usize) {
     let listener =
         TcpListener::bind(format!("0.0.0.0:{port}")).expect("could not start tcp server");
 
@@ -203,7 +160,7 @@ pub fn listen_for_commands_tcp(wm: Arc<Mutex<WindowManager>>, port: usize) {
 
                     tracing::info!("listening for incoming tcp messages from {}", &addr);
 
-                    match read_commands_tcp(&wm, &mut stream, &addr) {
+                    match read_commands_tcp(&mut stream, &addr) {
                         Ok(()) => {}
                         Err(error) => tracing::error!("{}", error),
                     }
@@ -225,7 +182,7 @@ impl WindowManager {
     pub fn process_command(
         &mut self,
         message: SocketMessage,
-        mut reply: impl std::io::Write,
+        reply: &mut impl std::io::Write,
     ) -> Result<()> {
         if let Some(virtual_desktop_id) = &self.virtual_desktop_id {
             if let Some(id) = current_virtual_desktop() {
@@ -2367,7 +2324,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
     }
 }
 
-pub fn read_commands_uds_1(stream: UnixStream) -> Result<()> {
+pub fn read_commands_uds(stream: UnixStream) -> Result<()> {
     let reader = BufReader::new(stream.try_clone()?);
     // TODO(raggi): while this processes more than one command, if there are
     // replies there is no clearly defined protocol for framing yet - it's
@@ -2378,53 +2335,12 @@ pub fn read_commands_uds_1(stream: UnixStream) -> Result<()> {
         let message = SocketMessage::from_str(&line?)?;
         messages.push(message);
     }
-    crate::runtime::send_message(crate::runtime::Message::Command(messages, stream));
+    runtime::send_message(runtime::Message::Command(messages, stream));
 
     Ok(())
 }
 
-pub fn read_commands_uds(wm: &Arc<Mutex<WindowManager>>, mut stream: UnixStream) -> Result<()> {
-    let reader = BufReader::new(stream.try_clone()?);
-    // TODO(raggi): while this processes more than one command, if there are
-    // replies there is no clearly defined protocol for framing yet - it's
-    // perhaps whole-json objects for now, but termination is signalled by
-    // socket shutdown.
-    for line in reader.lines() {
-        let message = SocketMessage::from_str(&line?)?;
-
-        match wm.try_lock_for(Duration::from_secs(1)) {
-            None => {
-                tracing::warn!(
-                    "could not acquire window manager lock, not processing message: {message}"
-                );
-            }
-            Some(mut wm) => {
-                if wm.is_paused {
-                    return match message {
-                        SocketMessage::TogglePause
-                        | SocketMessage::State
-                        | SocketMessage::GlobalState
-                        | SocketMessage::Stop => Ok(wm.process_command(message, &mut stream)?),
-                        _ => {
-                            tracing::trace!("ignoring while paused");
-                            Ok(())
-                        }
-                    };
-                }
-
-                wm.process_command(message.clone(), &mut stream)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub fn read_commands_tcp(
-    wm: &Arc<Mutex<WindowManager>>,
-    stream: &mut TcpStream,
-    addr: &str,
-) -> Result<()> {
+pub fn read_commands_tcp(stream: &mut TcpStream, addr: &str) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
 
     loop {
@@ -2445,22 +2361,7 @@ pub fn read_commands_tcp(
                     break;
                 };
 
-                let mut wm = wm.lock();
-
-                if wm.is_paused {
-                    return match message {
-                        SocketMessage::TogglePause
-                        | SocketMessage::State
-                        | SocketMessage::GlobalState
-                        | SocketMessage::Stop => Ok(wm.process_command(message, stream)?),
-                        _ => {
-                            tracing::trace!("ignoring while paused");
-                            Ok(())
-                        }
-                    };
-                }
-
-                wm.process_command(message.clone(), &mut *stream)?;
+                runtime::send_message(runtime::Message::TcpCommand(message, stream.try_clone()?));
             }
         }
     }
@@ -2519,7 +2420,7 @@ mod tests {
         // send a message
         send_socket_message(&socket_path, SocketMessage::FocusWorkspaceNumber(5));
 
-        let (stream, _) = wm.command_listener.accept().unwrap();
+        let (mut stream, _) = wm.command_listener.accept().unwrap();
         let reader = BufReader::new(stream.try_clone().unwrap());
         let next = reader.lines().next();
 
@@ -2529,7 +2430,7 @@ mod tests {
         assert!(matches!(message, SocketMessage::FocusWorkspaceNumber(5)));
 
         // process the message
-        wm.process_command(message, stream).unwrap();
+        wm.process_command(message, &mut stream).unwrap();
 
         // check the updated window manager state
         assert_eq!(wm.focused_workspace_idx().unwrap(), 5);
