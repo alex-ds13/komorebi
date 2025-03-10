@@ -12,14 +12,11 @@ use crate::WindowManagerEvent;
 use crate::DATA_DIR;
 use crate::HIDING_BEHAVIOUR;
 
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 lazy_static! {
@@ -34,60 +31,6 @@ impl From<ReaperNotification> for runtime::Control {
     fn from(value: ReaperNotification) -> Self {
         runtime::Control::Reaper(value)
     }
-}
-
-static CHANNEL: OnceLock<(Sender<ReaperNotification>, Receiver<ReaperNotification>)> =
-    OnceLock::new();
-
-pub fn channel() -> &'static (Sender<ReaperNotification>, Receiver<ReaperNotification>) {
-    CHANNEL.get_or_init(|| crossbeam_channel::bounded(50))
-}
-
-fn event_tx() -> Sender<ReaperNotification> {
-    channel().0.clone()
-}
-
-fn event_rx() -> Receiver<ReaperNotification> {
-    channel().1.clone()
-}
-
-pub fn send_notification(hwnds: HashMap<isize, (usize, usize)>) {
-    if event_tx().try_send(ReaperNotification(hwnds)).is_err() {
-        tracing::warn!("channel is full; dropping notification")
-    }
-}
-
-pub fn listen_for_notifications(
-    wm: Arc<Mutex<WindowManager>>,
-    known_hwnds: HashMap<isize, (usize, usize)>,
-) {
-    watch_for_orphans(known_hwnds);
-
-    std::thread::spawn(move || loop {
-        match handle_notifications(wm.clone()) {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
-        }
-    });
-}
-
-pub fn listen_for_notifications_1(known_hwnds: HashMap<isize, (usize, usize)>) {
-    watch_for_orphans(known_hwnds);
-
-    std::thread::spawn(move || loop {
-        match handle_notifications_1() {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
-        }
-    });
 }
 
 impl WindowManager {
@@ -164,95 +107,7 @@ impl WindowManager {
     }
 }
 
-fn handle_notifications_1() -> color_eyre::Result<()> {
-    tracing::info!("listening");
-
-    let receiver = event_rx();
-
-    for notification in receiver {
-        runtime::send_message(notification);
-    }
-
-    Ok(())
-}
-
-fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
-    tracing::info!("listening");
-
-    let receiver = event_rx();
-
-    for notification in receiver {
-        let orphan_hwnds = notification.0;
-        let mut wm = wm.lock();
-
-        let mut update_borders = false;
-
-        for (hwnd, (m_idx, w_idx)) in orphan_hwnds.iter() {
-            if let Some(monitor) = wm.monitors_mut().get_mut(*m_idx) {
-                let focused_workspace_idx = monitor.focused_workspace_idx();
-
-                if let Some(workspace) = monitor.workspaces_mut().get_mut(*w_idx) {
-                    // Remove orphan window
-                    if let Err(error) = workspace.remove_window(*hwnd) {
-                        tracing::warn!(
-                            "error reaping orphan window ({}) on monitor: {}, workspace: {}. Error: {}",
-                            hwnd,
-                            m_idx,
-                            w_idx,
-                            error,
-                        );
-                    }
-
-                    if focused_workspace_idx == *w_idx {
-                        // If this is not a focused workspace there is no need to update the
-                        // workspace or the borders. That will already be done when the user
-                        // changes to this workspace.
-                        workspace.update()?;
-                        update_borders = true;
-                    }
-                    tracing::info!(
-                        "reaped orphan window ({}) on monitor: {}, workspace: {}",
-                        hwnd,
-                        m_idx,
-                        w_idx,
-                    );
-                }
-            }
-
-            wm.known_hwnds.remove(hwnd);
-
-            let window = Window::from(*hwnd);
-            notify_subscribers(
-                crate::Notification {
-                    event: NotificationEvent::WindowManager(WindowManagerEvent::Destroy(
-                        WinEvent::ObjectDestroy,
-                        window,
-                    )),
-                    state: wm.as_ref().into(),
-                },
-                true,
-            )?;
-        }
-
-        if update_borders {
-            border_manager::send_notification(None);
-        }
-
-        // Save to file
-        let hwnd_json = DATA_DIR.join("komorebi.hwnd.json");
-        let file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(hwnd_json)?;
-
-        serde_json::to_writer_pretty(&file, &wm.known_hwnds.keys().collect::<Vec<_>>())?;
-    }
-
-    Ok(())
-}
-
-fn watch_for_orphans(known_hwnds: HashMap<isize, (usize, usize)>) {
+pub fn watch_for_orphans(known_hwnds: HashMap<isize, (usize, usize)>) {
     // Cache current hwnds
     {
         let mut cache = HWNDS_CACHE.lock();
@@ -311,7 +166,7 @@ fn find_orphans() -> color_eyre::Result<()> {
             cache.retain(|h, _| !orphan_hwnds.contains_key(h));
 
             // Send handles to remove
-            event_tx().send(ReaperNotification(orphan_hwnds))?;
+            runtime::send_message(ReaperNotification(orphan_hwnds));
         }
     }
 }
