@@ -318,7 +318,7 @@ fn main() -> eyre::Result<()> {
         .try_clone()
         .expect("could not clone unix listener");
 
-    reaper::listen_for_notifications_1(known_hwnds);
+    reaper::watch_for_orphans(known_hwnds);
     komorebi::process_command::listen_for_commands_1(command_listener);
     check_mdm_enrollment();
 
