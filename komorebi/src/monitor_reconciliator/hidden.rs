@@ -38,6 +38,7 @@ use windows::Win32::UI::WindowsAndMessaging::WM_WTSSESSION_CHANGE;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
 use windows::Win32::UI::WindowsAndMessaging::WTS_SESSION_LOCK;
 use windows::Win32::UI::WindowsAndMessaging::WTS_SESSION_UNLOCK;
+use windows_core::BOOL;
 
 use crate::monitor_reconciliator;
 use crate::windows_api;
@@ -298,4 +299,21 @@ impl Hidden {
             }
         }
     }
+}
+
+/// Filters the windows who's class starts with 'komorebi-hidden'
+pub extern "system" fn hidden_hwnds(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let hwnds = unsafe { &mut *(lparam.0 as *mut Vec<Hidden>) };
+    let hwnd = hwnd.0 as isize;
+
+    if let Ok(class) = WindowsApi::real_window_class_w(hwnd) {
+        if class.starts_with("komorebi-hidden") {
+            let border = Hidden {
+                hwnd,
+            };
+            hwnds.push(border);
+        }
+    }
+
+    true.into()
 }
