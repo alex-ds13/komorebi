@@ -1,4 +1,5 @@
 use crate::border_manager;
+use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::SocketMessage;
 use crate::Window;
@@ -118,6 +119,7 @@ impl std::fmt::Display for Message {
 pub enum Control {
     Border(border_manager::BorderMessage),
     Reaper(reaper::ReaperNotification),
+    Monitor(monitor_reconciliator::MonitorNotification),
     WindowWithBorder(WindowWithBorderAction),
 }
 
@@ -127,6 +129,9 @@ impl std::fmt::Display for Control {
             Control::Border(border_message) => write!(f, "Border({:?})", border_message),
             Control::Reaper(reaper_notification) => {
                 write!(f, "Reaper({:?})", reaper_notification.0)
+            }
+            Control::Monitor(monitor_notification) => {
+                write!(f, "Monitor({:?})", monitor_notification)
             }
             Control::WindowWithBorder(action) => match action {
                 WindowWithBorderAction::Show(hwnd) => write!(f, "ShowWindowWithBorder({})", hwnd),
@@ -260,6 +265,14 @@ impl WindowManager {
                             if let Err(error) = self.handle_reaper_notification(notification) {
                                 tracing::error!(
                                     "Error from 'handle_reaper_notification': {}",
+                                    error
+                                );
+                            }
+                        }
+                        Control::Monitor(notification) => {
+                            if let Err(error) = self.handle_monitor_notification(notification) {
+                                tracing::error!(
+                                    "Error from 'handle_monitor_notification': {}",
                                     error
                                 );
                             }
