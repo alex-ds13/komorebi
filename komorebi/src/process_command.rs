@@ -117,6 +117,10 @@ pub fn listen_for_commands(wm: Arc<Mutex<WindowManager>>) {
                                 Ok(()) => {}
                                 Err(error) => tracing::error!("{}", error),
                             }
+                            match stream.set_write_timeout(Some(Duration::from_secs(1))) {
+                                Ok(()) => {}
+                                Err(error) => tracing::error!("{}", error),
+                            }
                             match read_commands_uds(&wm_clone, stream) {
                                 Ok(()) => {}
                                 Err(error) => tracing::error!("{}", error),
