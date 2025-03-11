@@ -36,7 +36,6 @@ use crate::current_virtual_desktop;
 use crate::default_layout::LayoutOptions;
 use crate::monitor;
 use crate::monitor::Monitor;
-use crate::monitor_reconciliator;
 use crate::resolve_option_hashmap_usize_path;
 use crate::ring::Ring;
 use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
@@ -1313,6 +1312,7 @@ impl StaticConfig {
             uncloack_to_ignore: 0,
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
+            monitor_reconciliator: Default::default(),
         };
 
         wm.apply_globals(&mut value)?;
@@ -1360,6 +1360,8 @@ impl StaticConfig {
         let offset = wm.work_area_offset;
         let border_width = wm.border_manager.border_width;
         let border_offset = wm.border_manager.border_offset;
+        let mut to_cache = vec![];
+
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
@@ -1431,7 +1433,7 @@ impl StaticConfig {
                         .serial_number_id()
                         .as_ref()
                         .map_or(monitor.device_id(), |sn| sn);
-                    monitor_reconciliator::insert_in_monitor_cache(id, monitor.clone());
+                    to_cache.push((id.clone(), monitor.clone()));
                 }
 
                 let mut workspace_matching_rules = WORKSPACE_MATCHING_RULES.lock();
@@ -1459,6 +1461,10 @@ impl StaticConfig {
                     }
                 }
             }
+        }
+
+        for (id, cache) in to_cache {
+            wm.monitor_reconciliator.insert_in_monitor_cache(id, cache);
         }
 
         // Check for configs that should be tied to a specific display that isn't loaded right now
@@ -1511,7 +1517,7 @@ impl StaticConfig {
                         }
                     }
 
-                    monitor_reconciliator::insert_in_monitor_cache(&id, m);
+                    wm.monitor_reconciliator.insert_in_monitor_cache(id, m);
                 }
             }
         }
@@ -1541,6 +1547,8 @@ impl StaticConfig {
         let offset = wm.work_area_offset;
         let border_width = wm.border_manager.border_width;
         let border_offset = wm.border_manager.border_offset;
+        let mut to_cache = vec![];
+
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
@@ -1608,7 +1616,7 @@ impl StaticConfig {
                         .serial_number_id()
                         .as_ref()
                         .map_or(monitor.device_id(), |sn| sn);
-                    monitor_reconciliator::insert_in_monitor_cache(id, monitor.clone());
+                    to_cache.push((id.clone(), monitor.clone()));
                 }
 
                 let mut workspace_matching_rules = WORKSPACE_MATCHING_RULES.lock();
@@ -1636,6 +1644,10 @@ impl StaticConfig {
                     }
                 }
             }
+        }
+
+        for (id, cache) in to_cache {
+            wm.monitor_reconciliator.insert_in_monitor_cache(id, cache);
         }
 
         // Check for configs that should be tied to a specific display that isn't loaded right now
@@ -1688,7 +1700,7 @@ impl StaticConfig {
                         }
                     }
 
-                    monitor_reconciliator::insert_in_monitor_cache(&id, m);
+                    wm.monitor_reconciliator.insert_in_monitor_cache(id, m);
                 }
             }
         }

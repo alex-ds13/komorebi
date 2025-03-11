@@ -1,4 +1,5 @@
 use crate::border_manager;
+use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::SocketMessage;
 use crate::Window;
@@ -118,6 +119,7 @@ impl std::fmt::Display for Message {
 pub enum Control {
     Border(border_manager::BorderMessage),
     Reaper(reaper::ReaperNotification),
+    Monitor(monitor_reconciliator::MonitorNotification),
     WindowWithBorder(WindowWithBorderAction),
 }
 
@@ -127,6 +129,9 @@ impl std::fmt::Display for Control {
             Control::Border(border_message) => write!(f, "Border({:?})", border_message),
             Control::Reaper(reaper_notification) => {
                 write!(f, "Reaper({:?})", reaper_notification.0)
+            }
+            Control::Monitor(monitor_notification) => {
+                write!(f, "Monitor({:?})", monitor_notification)
             }
             Control::WindowWithBorder(action) => match action {
                 WindowWithBorderAction::Show(hwnd) => write!(f, "ShowWindowWithBorder({})", hwnd),
@@ -173,12 +178,16 @@ impl From<WindowWithBorderAction> for Control {
     }
 }
 
-impl WindowManager {
-    pub fn run(&mut self) {
-        tracing::info!("Starting runtime...");
+pub struct Runtime<'a> {
+    stop_runtime: bool,
+    events_rx: &'a Receiver<Message>,
+    commands_rx: &'a Receiver<Message>,
+    control_rx: &'a Receiver<Message>,
+    ctrlc_receiver: Receiver<()>,
+}
 
-        let mut stop_runtime = false;
-
+impl Runtime<'_> {
+    pub fn new() -> Self {
         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
         let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
         let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
@@ -192,34 +201,64 @@ impl WindowManager {
             tracing::error!("failed to set ctrl-c handler: {error}");
         }
 
+        Runtime {
+            stop_runtime: false,
+            events_rx,
+            commands_rx,
+            control_rx,
+            ctrlc_receiver,
+        }
+    }
+
+    /// Get the messages from the runtime
+    pub fn get_messages(&mut self) -> Vec<Message> {
+        let Runtime {
+            events_rx,
+            commands_rx,
+            control_rx,
+            ..
+        } = self;
+
+        // Messages buffer
+        let mut messages = vec![];
+
+        // while let Ok(message) = control_rx.recv_timeout(Duration::from_millis(20)) {
+        while let Ok(message) = control_rx.try_recv() {
+            //TODO: turn to trace
+            tracing::debug!("Control received: {}", &message);
+            messages.push(message);
+        }
+        while let Ok(message) = commands_rx.try_recv() {
+            //TODO: turn to trace
+            tracing::debug!("Commands received: {}", &message);
+            messages.push(message);
+        }
+        while let Ok(message) = events_rx.try_recv() {
+            //TODO: turn to trace
+            tracing::debug!("Event received: {}", &message);
+            messages.push(message);
+        }
+
+        messages
+    }
+}
+
+impl WindowManager {
+    pub fn run(&mut self) {
+        tracing::info!("Starting runtime...");
+
+        let mut runtime = Runtime::new();
+
         loop {
             // Check for ctrl-c before getting the messages
-            if ctrlc_receiver.try_recv().is_ok() {
+            if runtime.ctrlc_receiver.try_recv().is_ok() {
                 tracing::error!(
                     "received ctrl-c, restoring all hidden windows and terminating process"
                 );
                 break;
             }
 
-            // Messages buffer
-            let mut messages = vec![];
-
-            // while let Ok(message) = control_rx.recv_timeout(Duration::from_millis(20)) {
-            while let Ok(message) = control_rx.try_recv() {
-                //TODO: turn to trace
-                tracing::debug!("Control received: {}", &message);
-                messages.push(message);
-            }
-            while let Ok(message) = commands_rx.try_recv() {
-                //TODO: turn to trace
-                tracing::debug!("Commands received: {}", &message);
-                messages.push(message);
-            }
-            while let Ok(message) = events_rx.try_recv() {
-                //TODO: turn to trace
-                tracing::debug!("Event received: {}", &message);
-                messages.push(message);
-            }
+            let messages = runtime.get_messages();
 
             if !messages.is_empty() {
                 //TODO: turn to trace
@@ -229,84 +268,24 @@ impl WindowManager {
             }
 
             // Check for ctrl-c before handling the messages
-            if ctrlc_receiver.try_recv().is_ok() {
+            if runtime.ctrlc_receiver.try_recv().is_ok() {
                 tracing::error!(
                     "received ctrl-c, restoring all hidden windows and terminating process"
                 );
                 break;
             }
 
-            for message in messages {
-                tracing::info!("processing message: {}", &message);
-                match message {
-                    Message::Event(event) => {
-                        if let Err(error) = self.process_event(event) {
-                            tracing::error!("Error from 'process_event': {}", error);
-                        }
-                    }
-                    Message::TcpCommand(message, mut stream) => {
-                        self.handle_command(message, &mut stream, &mut stop_runtime);
-                    }
-                    Message::Command(messages, mut stream) => {
-                        for message in messages {
-                            self.handle_command(message, &mut stream, &mut stop_runtime);
-                        }
-                    }
-                    Message::Control(control) => match control {
-                        Control::Border(message) => {
-                            self.update_border(message);
-                        }
-                        Control::Reaper(notification) => {
-                            if let Err(error) = self.handle_reaper_notification(notification) {
-                                tracing::error!(
-                                    "Error from 'handle_reaper_notification': {}",
-                                    error
-                                );
-                            }
-                        }
-                        Control::WindowWithBorder(action) => match action {
-                            WindowWithBorderAction::Show(hwnd) => {
-                                let window = Window::from(hwnd);
-                                let message = border_manager::BorderMessage::Show(hwnd);
-                                window.internal_restore();
-                                self.update_border(message);
-                            }
-                            WindowWithBorderAction::Hide(hwnd) => {
-                                let window = Window::from(hwnd);
-                                let message = border_manager::BorderMessage::Hide(hwnd);
-                                window.internal_hide();
-                                self.update_border(message);
-                            }
-                        },
-                    },
-                }
-
-                // Check for ctrl-c between messages
-                if ctrlc_receiver.try_recv().is_ok() {
-                    tracing::error!(
-                        "received ctrl-c, restoring all hidden windows and terminating process"
-                    );
-                    stop_runtime = true;
-                    break;
-                }
-
-                if stop_runtime {
-                    tracing::debug!(
-                        "Received a 'Stop' command, ignoring the remainder messages..."
-                    );
-                    break;
-                }
-            }
+            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
 
             // Check for ctrl-c (we check this multiple times to reduce the wait for the user)
-            if ctrlc_receiver.try_recv().is_ok() {
+            if runtime.ctrlc_receiver.try_recv().is_ok() {
                 tracing::error!(
                     "received ctrl-c, restoring all hidden windows and terminating process"
                 );
                 break;
             }
 
-            if stop_runtime {
+            if runtime.stop_runtime {
                 tracing::info!("Stopping the runtime...");
                 break;
             }
@@ -315,6 +294,79 @@ impl WindowManager {
         *stopped = true;
         drop(stopped);
         self.dump_state();
+    }
+
+    /// Handle the received messages
+    fn handle_messages(
+        &mut self,
+        messages: Vec<Message>,
+        stop_runtime: &mut bool,
+        ctrlc_receiver: &Receiver<()>,
+    ) {
+        for message in messages {
+            tracing::info!("processing message: {}", &message);
+            match message {
+                Message::Event(event) => {
+                    if let Err(error) = self.process_event(event) {
+                        tracing::error!("Error from 'process_event': {}", error);
+                    }
+                }
+                Message::TcpCommand(message, mut stream) => {
+                    self.handle_command(message, &mut stream, stop_runtime);
+                }
+                Message::Command(messages, mut stream) => {
+                    for message in messages {
+                        self.handle_command(message, &mut stream, stop_runtime);
+                    }
+                }
+                Message::Control(control) => match control {
+                    Control::Border(message) => {
+                        self.update_border(message);
+                    }
+                    Control::Reaper(notification) => {
+                        if let Err(error) = self.handle_reaper_notification(notification) {
+                            tracing::error!("Error from 'handle_reaper_notification': {}", error);
+                        }
+                    }
+                    Control::Monitor(notification) => {
+                        if let Err(error) = self.handle_monitor_notification(
+                            notification,
+                            win32_display_data::connected_displays_all,
+                        ) {
+                            tracing::error!("Error from 'handle_monitor_notification': {}", error);
+                        }
+                    }
+                    Control::WindowWithBorder(action) => match action {
+                        WindowWithBorderAction::Show(hwnd) => {
+                            let window = Window::from(hwnd);
+                            let message = border_manager::BorderMessage::Show(hwnd);
+                            window.internal_restore();
+                            self.update_border(message);
+                        }
+                        WindowWithBorderAction::Hide(hwnd) => {
+                            let window = Window::from(hwnd);
+                            let message = border_manager::BorderMessage::Hide(hwnd);
+                            window.internal_hide();
+                            self.update_border(message);
+                        }
+                    },
+                },
+            }
+
+            // Check for ctrl-c between messages
+            if ctrlc_receiver.try_recv().is_ok() {
+                tracing::error!(
+                    "received ctrl-c, restoring all hidden windows and terminating process"
+                );
+                *stop_runtime = true;
+                break;
+            }
+
+            if *stop_runtime {
+                tracing::debug!("Received a 'Stop' command, ignoring the remainder messages...");
+                break;
+            }
+        }
     }
 
     /// Helper function to call the `border_manager` update function and handle errors
@@ -369,6 +421,23 @@ impl WindowManager {
             if let Err(error) = self.restore_all_windows(false) {
                 tracing::error!("failed to restore all windows: {}", error);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl WindowManager {
+        pub fn test_run<'a>(&'a mut self, mut runtime: Runtime<'a>) -> Runtime<'a> {
+            let messages = runtime.get_messages();
+
+            assert!(!messages.is_empty(), "messages was empty");
+
+            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
+
+            runtime
         }
     }
 }
