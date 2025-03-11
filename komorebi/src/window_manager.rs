@@ -54,6 +54,7 @@ use crate::container::Container;
 use crate::current_virtual_desktop;
 use crate::load_configuration;
 use crate::monitor::Monitor;
+use crate::monitor_reconciliator;
 use crate::ring::Ring;
 use crate::should_act;
 use crate::should_act_individual;
@@ -91,6 +92,7 @@ pub struct WindowManager {
     /// Maps each known window hwnd to the (monitor, workspace) index pair managing it
     pub known_hwnds: HashMap<isize, (usize, usize)>,
     pub border_manager: border_manager::BorderManager,
+    pub monitor_reconciliator: monitor_reconciliator::MonitorReconciliator,
 }
 
 impl AsRef<Self> for WindowManager {
@@ -168,6 +170,7 @@ impl WindowManager {
             uncloack_to_ignore: 0,
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
+            monitor_reconciliator: Default::default(),
         })
     }
 
