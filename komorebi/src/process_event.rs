@@ -777,9 +777,6 @@ impl WindowManager {
         tracing::debug!("performing reconciliation");
         self.focus_monitor(m_idx)?;
         let mouse_follows_focus = self.mouse_follows_focus;
-        let offset = self.work_area_offset;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
 
         if let Some(monitor) = self.focused_monitor_mut() {
             if ws_idx != monitor.focused_workspace_idx() {
@@ -823,7 +820,7 @@ impl WindowManager {
                 workspace.set_layer(layer);
             }
             monitor.load_focused_workspace(mouse_follows_focus)?;
-            monitor.update_focused_workspace(offset, border_width, border_offset)?;
+            monitor.update_focused_workspace()?;
         }
 
         Ok(())

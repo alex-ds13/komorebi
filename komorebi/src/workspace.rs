@@ -167,6 +167,8 @@ pub enum WorkspaceWindowLocation {
 pub struct WorkspaceGlobals {
     pub container_padding: Option<i32>,
     pub workspace_padding: Option<i32>,
+    pub border_width: i32,
+    pub border_offset: i32,
     pub work_area: Rect,
     pub work_area_offset: Option<Rect>,
     pub window_based_work_area_offset: Option<Rect>,
@@ -331,7 +333,7 @@ impl Workspace {
         Ok(())
     }
 
-    pub fn update(&mut self, border_width: i32, border_offset: i32) -> Result<()> {
+    pub fn update(&mut self) -> Result<()> {
         if !INITIAL_CONFIGURATION_LOADED.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -349,6 +351,8 @@ impl Workspace {
         let window_based_work_area_offset = self.globals().window_based_work_area_offset;
         let window_based_work_area_offset_limit =
             self.globals().window_based_work_area_offset_limit;
+        let border_width = self.globals().border_width;
+        let border_offset = self.globals().border_offset;
 
         let mut adjusted_work_area = work_area_offset.map_or_else(
             || work_area,

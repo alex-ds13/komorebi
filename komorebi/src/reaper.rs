@@ -39,8 +39,6 @@ impl WindowManager {
         let orphan_hwnds = notification.0;
 
         let mut update_borders = false;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
 
         for (hwnd, (m_idx, w_idx)) in orphan_hwnds.iter() {
             if let Some(monitor) = self.monitors_mut().get_mut(*m_idx) {
@@ -62,7 +60,7 @@ impl WindowManager {
                         // If this is not a focused workspace there is no need to update the
                         // workspace or the borders. That will already be done when the user
                         // changes to this workspace.
-                        workspace.update(border_width, border_offset)?;
+                        workspace.update()?;
                         update_borders = true;
                     }
                     tracing::info!(
