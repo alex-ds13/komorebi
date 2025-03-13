@@ -234,41 +234,6 @@ impl Monitor {
         }
     }
 
-    /// Updates the `globals` field of workspace with index `workspace_idx`
-    pub fn update_workspace_globals(
-        &mut self,
-        workspace_idx: usize,
-        offset: Option<Rect>,
-        border_width: i32,
-        border_offset: i32,
-    ) {
-        let container_padding = self
-            .container_padding()
-            .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
-        let workspace_padding = self
-            .workspace_padding()
-            .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-        let work_area = *self.work_area_size();
-        let work_area_offset = self.work_area_offset.or(offset);
-        let window_based_work_area_offset = self.window_based_work_area_offset();
-        let window_based_work_area_offset_limit = self.window_based_work_area_offset_limit();
-        let floating_layer_behaviour = self.floating_layer_behaviour();
-
-        if let Some(workspace) = self.workspaces_mut().get_mut(workspace_idx) {
-            workspace.globals = WorkspaceGlobals {
-                container_padding,
-                workspace_padding,
-                border_width,
-                border_offset,
-                work_area,
-                work_area_offset,
-                window_based_work_area_offset,
-                window_based_work_area_offset_limit,
-                floating_layer_behaviour,
-            }
-        }
-    }
-
     pub fn add_container(
         &mut self,
         container: Container,
@@ -509,20 +474,7 @@ impl Monitor {
         self.workspaces().len()
     }
 
-    pub fn update_focused_workspace(
-        &mut self,
-        offset: Option<Rect>,
-        border_width: i32,
-        border_offset: i32,
-    ) -> Result<()> {
-        let offset = if self.work_area_offset().is_some() {
-            self.work_area_offset()
-        } else {
-            offset
-        };
-
-        let focused_workspace_idx = self.focused_workspace_idx();
-        self.update_workspace_globals(focused_workspace_idx, offset, border_width, border_offset);
+    pub fn update_focused_workspace(&mut self) -> Result<()> {
         self.focused_workspace_mut()
             .ok_or_else(|| anyhow!("there is no workspace"))?
             .update()?;

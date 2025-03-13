@@ -225,10 +225,8 @@ impl WindowManager {
             }
             MonitorNotification::WorkAreaChanged => {
                 tracing::debug!("handling work area changed notification");
-                let offset = self.work_area_offset;
-                let border_width = self.border_manager.border_width;
-                let border_offset = self.border_manager.border_offset;
-                for monitor in self.monitors_mut() {
+                let mut to_update = vec![];
+                for (monitor_idx, monitor) in self.monitors_mut().iter_mut().enumerate() {
                     let mut should_update = false;
 
                     // Update work areas as necessary
@@ -242,27 +240,34 @@ impl WindowManager {
                             });
 
                             should_update = true;
+                            to_update.push((monitor_idx, monitor.focused_workspace_idx()));
                         }
                     }
 
-                    if should_update {
-                        tracing::info!("updated work area for {}", monitor.device_id());
-                        monitor.update_focused_workspace(offset, border_width, border_offset)?;
-                        border_manager::send_notification(None);
-                    } else {
+                    if !should_update {
                         tracing::debug!(
                             "work areas match, reconciliation not required for {}",
                             monitor.device_id()
                         );
                     }
                 }
+
+                let should_update_borders = !to_update.is_empty();
+                for (m_idx, ws_idx) in to_update {
+                    self.update_workspace_globals(m_idx, ws_idx);
+                    if let Some(monitor) = self.monitors_mut().get_mut(m_idx) {
+                        tracing::info!("updated work area for {}", monitor.device_id());
+                        monitor.update_focused_workspace()?;
+                    }
+                }
+                if should_update_borders {
+                    border_manager::send_notification(None);
+                }
             }
             MonitorNotification::ResolutionScalingChanged => {
                 tracing::debug!("handling resolution/scaling changed notification");
-                let offset = self.work_area_offset;
-                let border_width = self.border_manager.border_width;
-                let border_offset = self.border_manager.border_offset;
-                for monitor in self.monitors_mut() {
+                let mut to_update = vec![];
+                for (monitor_idx, monitor) in self.monitors_mut().iter_mut().enumerate() {
                     let mut should_update = false;
 
                     // Update sizes and work areas as necessary
@@ -276,6 +281,7 @@ impl WindowManager {
                             });
 
                             should_update = true;
+                            to_update.push((monitor_idx, monitor.focused_workspace_idx()));
                         }
 
                         if reference.size() != monitor.size() {
@@ -290,20 +296,27 @@ impl WindowManager {
                         }
                     }
 
-                    if should_update {
-                        tracing::info!(
-                            "updated monitor resolution/scaling for {}",
-                            monitor.device_id()
-                        );
-
-                        monitor.update_focused_workspace(offset, border_width, border_offset)?;
-                        border_manager::send_notification(None);
-                    } else {
+                    if !should_update {
                         tracing::debug!(
                             "resolutions match, reconciliation not required for {}",
                             monitor.device_id()
                         );
                     }
+                }
+
+                let should_update_borders = !to_update.is_empty();
+                for (m_idx, ws_idx) in to_update {
+                    self.update_workspace_globals(m_idx, ws_idx);
+                    if let Some(monitor) = self.monitors_mut().get_mut(m_idx) {
+                        tracing::info!(
+                            "updated monitor resolution/scaling for {}",
+                            monitor.device_id()
+                        );
+                        monitor.update_focused_workspace()?;
+                    }
+                }
+                if should_update_borders {
+                    border_manager::send_notification(None);
                 }
             }
             // this is handled above if the reconciliator is paused but we should still check if
@@ -487,18 +500,10 @@ impl WindowManager {
                         self.focus_monitor(0)?;
                     }
 
-                    let offset = self.work_area_offset;
-                    let border_width = self.border_manager.border_width;
-                    let border_offset = self.border_manager.border_offset;
-
                     for monitor in self.monitors_mut() {
                         // If we have lost a monitor, update everything to filter out any jank
                         if initial_monitor_count != post_removal_monitor_count {
-                            monitor.update_focused_workspace(
-                                offset,
-                                border_width,
-                                border_offset,
-                            )?;
+                            monitor.update_focused_workspace()?;
                         }
                     }
                 }
@@ -529,12 +534,13 @@ impl WindowManager {
                     );
 
                     let known_hwnds = self.known_hwnds.clone();
-                    let offset = self.work_area_offset;
-                    let border_width = self.border_manager.border_width;
-                    let border_offset = self.border_manager.border_offset;
                     let mouse_follows_focus = self.mouse_follows_focus;
                     let focused_monitor_idx = self.focused_monitor_idx();
                     let focused_workspace_idx = self.focused_workspace_idx()?;
+
+                    // Update the globals of the focused workspaces on all monitors so that the new
+                    // monitors' workspaces have the updated values
+                    self.update_all_workspace_globals();
 
                     // Get the monitor cache temporarily out of `self.monitor_reconciliator` so we can edit it
                     // while also editing `self`.
@@ -725,8 +731,7 @@ impl WindowManager {
                                 // Restore windows from new monitor and update the focused
                                 // workspace
                                 let _ = m.load_focused_workspace(mouse_follows_focus);
-                                let _ =
-                                    m.update_focused_workspace(offset, border_width, border_offset);
+                                let _ = m.update_focused_workspace();
                             }
 
                             // Entries in the cache should only be used once; remove the entry there was a cache hit
