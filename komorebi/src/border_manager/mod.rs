@@ -27,6 +27,7 @@ use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 
+/// Responsible for handling all border related logic and control
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct BorderManager {
     pub enabled: bool,
