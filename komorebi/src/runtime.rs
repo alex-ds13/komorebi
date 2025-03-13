@@ -457,7 +457,8 @@ impl WindowManager {
                     border_manager::BorderMessage::PassEvent(hwnd, _) => {
                         self.known_hwnds.contains_key(hwnd)
                     }
-                    border_manager::BorderMessage::Delete(_)
+                    border_manager::BorderMessage::ForceUpdate
+                    | border_manager::BorderMessage::Delete(_)
                     | border_manager::BorderMessage::Show(_)
                     | border_manager::BorderMessage::Hide(_)
                     | border_manager::BorderMessage::Raise(_)
