@@ -4,10 +4,12 @@ use crate::listen_for_commands_tcp;
 use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::winevent_listener;
+use crate::RuleDebug;
 use crate::SocketMessage;
 use crate::Window;
 use crate::WindowManager;
 use crate::WindowManagerEvent;
+use crate::WindowsApi;
 
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -226,18 +228,15 @@ impl Runtime<'_> {
         let mut messages = vec![];
 
         while let Ok(message) = control_rx.try_recv() {
-            //TODO: turn to trace
-            tracing::debug!("Control received: {}", &message);
+            tracing::trace!("Control received: {}", &message);
             messages.push(message);
         }
         while let Ok(message) = commands_rx.try_recv() {
-            //TODO: turn to trace
-            tracing::debug!("Commands received: {}", &message);
+            tracing::trace!("Commands received: {}", &message);
             messages.push(message);
         }
         while let Ok(message) = events_rx.try_recv() {
-            //TODO: turn to trace
-            tracing::debug!("Event received: {}", &message);
+            tracing::trace!("Event received: {}", &message);
             messages.push(message);
         }
 
@@ -262,7 +261,10 @@ impl WindowManager {
                 break;
             }
 
-            let messages = runtime.get_messages();
+            let mut messages = runtime.get_messages();
+
+            // Filter messages
+            self.filter_messages(&mut messages);
 
             if !messages.is_empty() {
                 //TODO: turn to trace
@@ -393,6 +395,71 @@ impl WindowManager {
         if let Some(port) = self.tcp_port {
             listen_for_commands_tcp(port);
         }
+    }
+
+    /// Filter messages, we only care for window events from known hwnds or from unknown hwnds if
+    /// the event was `Show`, `Uncloak` or `Manage`. Also the border `Update` and `PassEvent`
+    /// messages can also be sent from the events listener so we also need to check those to make
+    /// sure the hwnd is known.
+    fn filter_messages(&self, messages: &mut Vec<Message>) {
+        messages.retain(|message| match message {
+            Message::Event(event) => match event {
+                WindowManagerEvent::Destroy(_, window)
+                | WindowManagerEvent::FocusChange(_, window)
+                | WindowManagerEvent::Hide(_, window)
+                | WindowManagerEvent::Cloak(_, window)
+                | WindowManagerEvent::Minimize(_, window)
+                | WindowManagerEvent::MoveResizeStart(_, window)
+                | WindowManagerEvent::MoveResizeEnd(_, window)
+                | WindowManagerEvent::MouseCapture(_, window)
+                | WindowManagerEvent::Unmanage(window)
+                | WindowManagerEvent::Raise(window)
+                | WindowManagerEvent::TitleUpdate(_, window) => {
+                    self.known_hwnds.contains_key(&window.hwnd)
+                }
+                WindowManagerEvent::Show(_, window)
+                | WindowManagerEvent::Uncloak(_, window)
+                | WindowManagerEvent::Manage(window) => {
+                    let is_window = WindowsApi::is_window(window.hwnd);
+
+                    if is_window {
+                        let window = Window::from(window.hwnd);
+
+                        window
+                            .should_manage(None, &mut RuleDebug::default())
+                            .is_ok_and(|v| v)
+                    } else {
+                        false
+                    }
+                }
+            },
+            Message::Command(_, _) | Message::TcpCommand(_, _) => true,
+            Message::Control(control) => match control {
+                Control::Border(border_message) => match border_message {
+                    // Only `Update` and `PassEvent` are sent from the events listener callback so
+                    // we only need to check these two
+                    border_manager::BorderMessage::Update(hwnd) => {
+                        if let Some(hwnd) = hwnd {
+                            self.known_hwnds.contains_key(hwnd)
+                        } else {
+                            // If an update was requested with `None` we want to handle that since
+                            // that was sent by the `WindowManager`
+                            true
+                        }
+                    }
+                    border_manager::BorderMessage::PassEvent(hwnd, _) => {
+                        self.known_hwnds.contains_key(hwnd)
+                    }
+                    border_manager::BorderMessage::Delete(_)
+                    | border_manager::BorderMessage::Show(_)
+                    | border_manager::BorderMessage::Hide(_)
+                    | border_manager::BorderMessage::Raise(_)
+                    | border_manager::BorderMessage::Lower(_)
+                    | border_manager::BorderMessage::DestroyAll => true,
+                },
+                Control::Reaper(_) | Control::Monitor(_) | Control::WindowWithBorder(_) => true,
+            },
+        });
     }
 
     /// Helper function to call the `border_manager` update function and handle errors
