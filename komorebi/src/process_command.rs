@@ -618,10 +618,6 @@ impl WindowManager {
                     }));
                 }
 
-                let offset = self.work_area_offset;
-                let border_width = self.border_manager.border_width;
-                let border_offset = self.border_manager.border_offset;
-
                 let mut hwnds_to_purge = vec![];
                 for (i, monitor) in self.monitors().iter().enumerate() {
                     for container in monitor
@@ -667,7 +663,7 @@ impl WindowManager {
                         .ok_or_else(|| anyhow!("there is no focused workspace"))?
                         .remove_window(hwnd)?;
 
-                    monitor.update_focused_workspace(offset, border_width, border_offset)?;
+                    monitor.update_focused_workspace()?;
                 }
             }
             SocketMessage::FocusedWorkspaceContainerPadding(adjustment) => {
