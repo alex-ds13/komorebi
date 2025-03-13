@@ -152,3 +152,24 @@ pub fn should() -> eyre::Result<ValidationFeedback> {
         Ok(ValidationFeedback::Unsuccessful(raw_payload))
     }
 }
+
+#[tracing::instrument]
+pub fn check_mdm_enrollment() {
+    std::thread::spawn(|| {
+        loop {
+            if let Ok((mdm, server)) = mdm_enrollment() {
+                #[allow(clippy::collapsible_if)]
+                if mdm && should().map(|f| f.into()).unwrap_or(true) {
+                    let mut args = vec!["splash".to_string()];
+                    if let Some(server) = server {
+                        args.push(server);
+                    }
+
+                    let _ = Command::new("komorebic").args(&args).spawn();
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(14400));
+        }
+    });
+}

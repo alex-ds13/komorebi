@@ -247,8 +247,6 @@ fn main() -> eyre::Result<()> {
 
     WindowsApi::foreground_lock_timeout()?;
 
-    winevent_listener::start();
-
     #[cfg(feature = "deadlock_detection")]
     detect_deadlocks();
 
@@ -311,19 +309,7 @@ fn main() -> eyre::Result<()> {
         }
     }
 
-    let known_hwnds = wm.known_hwnds.clone();
-    let command_listener = wm
-        .command_listener
-        .try_clone()
-        .expect("could not clone unix listener");
-
-    reaper::watch_for_orphans(known_hwnds);
-    listen_for_commands(command_listener);
-
-    if let Some(port) = opts.tcp_port {
-        listen_for_commands_tcp(port);
-    }
-    check_mdm_enrollment();
+    wm.tcp_port = opts.tcp_port;
 
     wm.retile_all(false)?;
 
@@ -358,30 +344,4 @@ fn main() -> eyre::Result<()> {
     let _ = std::fs::remove_file(socket);
 
     std::process::exit(130);
-}
-
-#[tracing::instrument]
-pub fn check_mdm_enrollment() {
-    use std::process::Command;
-    use std::sync::atomic::Ordering;
-    use crate::splash;
-    use crate::splash::mdm_enrollment;
-
-    std::thread::spawn(|| {
-        loop {
-            if let Ok((mdm, server)) = mdm_enrollment() {
-                #[allow(clippy::collapsible_if)]
-                if mdm && splash::should().map(|f| f.into()).unwrap_or(true) {
-                    let mut args = vec!["splash".to_string()];
-                    if let Some(server) = server {
-                        args.push(server);
-                    }
-
-                    let _ = Command::new("komorebic").args(&args).spawn();
-                }
-            }
-
-            std::thread::sleep(std::time::Duration::from_secs(14400));
-        }
-    });
 }
