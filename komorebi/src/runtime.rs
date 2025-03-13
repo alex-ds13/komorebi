@@ -15,6 +15,7 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
@@ -253,6 +254,8 @@ impl WindowManager {
         self.start_listeners();
 
         loop {
+            std::thread::sleep(Duration::from_millis(1));
+
             // Check for ctrl-c before getting the messages
             if runtime.ctrlc_receiver.try_recv().is_ok() {
                 tracing::error!(
