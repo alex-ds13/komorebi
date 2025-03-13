@@ -1,6 +1,9 @@
 use crate::border_manager;
+use crate::listen_for_commands;
+use crate::listen_for_commands_tcp;
 use crate::monitor_reconciliator;
 use crate::reaper;
+use crate::winevent_listener;
 use crate::SocketMessage;
 use crate::Window;
 use crate::WindowManager;
@@ -222,7 +225,6 @@ impl Runtime<'_> {
         // Messages buffer
         let mut messages = vec![];
 
-        // while let Ok(message) = control_rx.recv_timeout(Duration::from_millis(20)) {
         while let Ok(message) = control_rx.try_recv() {
             //TODO: turn to trace
             tracing::debug!("Control received: {}", &message);
@@ -248,6 +250,8 @@ impl WindowManager {
         tracing::info!("Starting runtime...");
 
         let mut runtime = Runtime::new();
+
+        self.start_listeners();
 
         loop {
             // Check for ctrl-c before getting the messages
@@ -366,6 +370,28 @@ impl WindowManager {
                 tracing::debug!("Received a 'Stop' command, ignoring the remainder messages...");
                 break;
             }
+        }
+    }
+
+    /// Starts all the listeners and watchers threads
+    fn start_listeners(&mut self) {
+        // Start window events listener
+        winevent_listener::start();
+
+        // Start the reaper watcher
+        let known_hwnds = self.known_hwnds.clone();
+        reaper::watch_for_orphans(known_hwnds);
+
+        // Start the commands listeners
+        let command_listener = self
+            .command_listener
+            .try_clone()
+            .expect("could not clone unix listener");
+
+        listen_for_commands(command_listener);
+
+        if let Some(port) = self.tcp_port {
+            listen_for_commands_tcp(port);
         }
     }
 

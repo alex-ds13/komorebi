@@ -241,8 +241,6 @@ fn main() -> Result<()> {
 
     WindowsApi::foreground_lock_timeout()?;
 
-    winevent_listener::start();
-
     #[cfg(feature = "deadlock_detection")]
     detect_deadlocks();
 
@@ -305,18 +303,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let known_hwnds = wm.known_hwnds.clone();
-    let command_listener = wm
-        .command_listener
-        .try_clone()
-        .expect("could not clone unix listener");
-
-    reaper::watch_for_orphans(known_hwnds);
-    listen_for_commands(command_listener);
-
-    if let Some(port) = opts.tcp_port {
-        listen_for_commands_tcp(port);
-    }
+    wm.tcp_port = opts.tcp_port;
 
     wm.retile_all(false)?;
 
