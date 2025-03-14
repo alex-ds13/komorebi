@@ -38,15 +38,6 @@ use crate::current_virtual_desktop;
 use crate::monitor;
 use crate::monitor::Monitor;
 use crate::ring::Ring;
-use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use crate::stackbar_manager::STACKBAR_FONT_FAMILY;
-use crate::stackbar_manager::STACKBAR_FONT_SIZE;
-use crate::stackbar_manager::STACKBAR_LABEL;
-use crate::stackbar_manager::STACKBAR_MODE;
-use crate::stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use crate::stackbar_manager::STACKBAR_TAB_HEIGHT;
-use crate::stackbar_manager::STACKBAR_TAB_WIDTH;
-use crate::stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 use crate::theme_manager;
 use crate::transparency_manager;
 use crate::window;
@@ -979,37 +970,37 @@ impl WindowManager {
 
         if let Some(stackbar) = &config.stackbar {
             if let Some(height) = &stackbar.height {
-                STACKBAR_TAB_HEIGHT.store(*height, Ordering::SeqCst);
+                self.stackbar_manager.globals.tab_height = *height;
             }
 
             if let Some(label) = &stackbar.label {
-                STACKBAR_LABEL.store(*label);
+                self.stackbar_manager.globals.label = *label;
             }
 
             if let Some(mode) = &stackbar.mode {
-                STACKBAR_MODE.store(*mode);
+                self.stackbar_manager.globals.mode = *mode;
             }
 
             #[allow(clippy::assigning_clones)]
             if let Some(tabs) = &stackbar.tabs {
                 if let Some(background) = &tabs.background {
-                    STACKBAR_TAB_BACKGROUND_COLOUR.store((*background).into(), Ordering::SeqCst);
+                    self.stackbar_manager.globals.tab_background_colour = (*background).into();
                 }
 
                 if let Some(colour) = &tabs.focused_text {
-                    STACKBAR_FOCUSED_TEXT_COLOUR.store((*colour).into(), Ordering::SeqCst);
+                    self.stackbar_manager.globals.focused_text_colour = (*colour).into();
                 }
 
                 if let Some(colour) = &tabs.unfocused_text {
-                    STACKBAR_UNFOCUSED_TEXT_COLOUR.store((*colour).into(), Ordering::SeqCst);
+                    self.stackbar_manager.globals.unfocused_text_colour = (*colour).into();
                 }
 
                 if let Some(width) = &tabs.width {
-                    STACKBAR_TAB_WIDTH.store(*width, Ordering::SeqCst);
+                    self.stackbar_manager.globals.tab_width = *width;
                 }
 
-                STACKBAR_FONT_SIZE.store(tabs.font_size.unwrap_or(0), Ordering::SeqCst);
-                *STACKBAR_FONT_FAMILY.lock() = tabs.font_family.clone();
+                self.stackbar_manager.globals.font_size = tabs.font_size.unwrap_or(0);
+                self.stackbar_manager.globals.font_family = tabs.font_family.clone();
             }
         }
 
@@ -1164,6 +1155,7 @@ impl StaticConfig {
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
+            stackbar_manager: Default::default(),
         };
 
         wm.apply_globals(&mut value)?;

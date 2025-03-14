@@ -49,8 +49,6 @@ use crate::monitor::MonitorInformation;
 use crate::notify_subscribers;
 use crate::runtime;
 use crate::stackbar_manager;
-use crate::stackbar_manager::STACKBAR_FONT_FAMILY;
-use crate::stackbar_manager::STACKBAR_FONT_SIZE;
 use crate::static_config::StaticConfig;
 use crate::theme_manager;
 use crate::transparency_manager;
@@ -85,13 +83,6 @@ use crate::TCP_CONNECTIONS;
 use crate::TRAY_AND_MULTI_WINDOW_IDENTIFIERS;
 use crate::WINDOWS_11;
 use crate::WORKSPACE_MATCHING_RULES;
-use stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use stackbar_manager::STACKBAR_LABEL;
-use stackbar_manager::STACKBAR_MODE;
-use stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use stackbar_manager::STACKBAR_TAB_HEIGHT;
-use stackbar_manager::STACKBAR_TAB_WIDTH;
-use stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 
 #[tracing::instrument]
 pub fn listen_for_commands(command_listener: UnixListener) {
@@ -1831,36 +1822,36 @@ impl WindowManager {
                 transparency_manager::TRANSPARENCY_ALPHA.store(alpha, Ordering::SeqCst);
             }
             SocketMessage::StackbarMode(mode) => {
-                STACKBAR_MODE.store(mode);
+                self.stackbar_manager.globals.mode = mode;
                 self.retile_all(true)?;
             }
             SocketMessage::StackbarLabel(label) => {
-                STACKBAR_LABEL.store(label);
+                self.stackbar_manager.globals.label = label;
             }
             SocketMessage::StackbarFocusedTextColour(r, g, b) => {
                 let rgb = Rgb::new(r, g, b);
-                STACKBAR_FOCUSED_TEXT_COLOUR.store(rgb.into(), Ordering::SeqCst);
+                self.stackbar_manager.globals.focused_text_colour = rgb.into();
             }
             SocketMessage::StackbarUnfocusedTextColour(r, g, b) => {
                 let rgb = Rgb::new(r, g, b);
-                STACKBAR_UNFOCUSED_TEXT_COLOUR.store(rgb.into(), Ordering::SeqCst);
+                self.stackbar_manager.globals.unfocused_text_colour = rgb.into();
             }
             SocketMessage::StackbarBackgroundColour(r, g, b) => {
                 let rgb = Rgb::new(r, g, b);
-                STACKBAR_TAB_BACKGROUND_COLOUR.store(rgb.into(), Ordering::SeqCst);
+                self.stackbar_manager.globals.tab_background_colour = rgb.into();
             }
             SocketMessage::StackbarHeight(height) => {
-                STACKBAR_TAB_HEIGHT.store(height, Ordering::SeqCst);
+                self.stackbar_manager.globals.tab_height = height;
             }
             SocketMessage::StackbarTabWidth(width) => {
-                STACKBAR_TAB_WIDTH.store(width, Ordering::SeqCst);
+                self.stackbar_manager.globals.tab_width = width;
             }
             SocketMessage::StackbarFontSize(size) => {
-                STACKBAR_FONT_SIZE.store(size, Ordering::SeqCst);
+                self.stackbar_manager.globals.font_size = size;
             }
             #[allow(clippy::assigning_clones)]
             SocketMessage::StackbarFontFamily(ref font_family) => {
-                *STACKBAR_FONT_FAMILY.lock() = font_family.clone();
+                self.stackbar_manager.globals.font_family = font_family.clone();
             }
             SocketMessage::ApplicationSpecificConfigurationSchema => {
                 #[cfg(feature = "schemars")]
@@ -1966,7 +1957,7 @@ impl WindowManager {
 
         border_manager::send_notification(None);
         // transparency_manager::send_notification();
-        // stackbar_manager::send_notification();
+        stackbar_manager::send_update();
 
         tracing::info!("processed");
         Ok(())

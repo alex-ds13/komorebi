@@ -35,7 +35,6 @@ use komorebi::process_command::listen_for_commands;
 use komorebi::process_command::listen_for_commands_tcp;
 use komorebi::process_movement::listen_for_movements;
 use komorebi::reaper;
-use komorebi::stackbar_manager;
 use komorebi::static_config::StaticConfig;
 use komorebi::theme_manager;
 use komorebi::transparency_manager;
@@ -264,7 +263,6 @@ fn main() -> Result<()> {
     // Start the runtime
     wm.run();
 
-    // stackbar_manager::listen_for_notifications(wm.clone());
     // transparency_manager::listen_for_notifications(wm.clone());
     // focus_manager::listen_for_notifications(wm.clone());
     // theme_manager::listen_for_notifications();

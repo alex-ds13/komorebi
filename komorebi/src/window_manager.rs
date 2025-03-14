@@ -58,13 +58,7 @@ use crate::monitor_reconciliator;
 use crate::ring::Ring;
 use crate::should_act;
 use crate::should_act_individual;
-use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use crate::stackbar_manager::STACKBAR_LABEL;
-use crate::stackbar_manager::STACKBAR_MODE;
-use crate::stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use crate::stackbar_manager::STACKBAR_TAB_HEIGHT;
-use crate::stackbar_manager::STACKBAR_TAB_WIDTH;
-use crate::stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
+use crate::stackbar_manager;
 use crate::static_config::StaticConfig;
 use crate::transparency_manager;
 use crate::transparency_manager::TRANSPARENCY_ALPHA;
@@ -127,6 +121,7 @@ pub struct WindowManager {
     pub known_hwnds: HashMap<isize, (usize, usize)>,
     pub border_manager: border_manager::BorderManager,
     pub monitor_reconciliator: monitor_reconciliator::MonitorReconciliator,
+    pub stackbar_manager: stackbar_manager::StackbarManager,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -255,19 +250,19 @@ impl From<&WindowManager> for GlobalState {
             border_style: value.border_manager.border_style,
             border_offset: value.border_manager.border_offset,
             border_width: value.border_manager.border_width,
-            stackbar_mode: STACKBAR_MODE.load(),
-            stackbar_label: STACKBAR_LABEL.load(),
+            stackbar_mode: value.stackbar_manager.globals.mode,
+            stackbar_label: value.stackbar_manager.globals.label,
             stackbar_focused_text_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_FOCUSED_TEXT_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.focused_text_colour
             )),
             stackbar_unfocused_text_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_UNFOCUSED_TEXT_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.unfocused_text_colour
             )),
             stackbar_tab_background_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_TAB_BACKGROUND_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.tab_background_colour
             )),
-            stackbar_tab_width: STACKBAR_TAB_WIDTH.load(Ordering::SeqCst),
-            stackbar_height: STACKBAR_TAB_HEIGHT.load(Ordering::SeqCst),
+            stackbar_tab_width: value.stackbar_manager.globals.tab_width,
+            stackbar_height: value.stackbar_manager.globals.tab_height,
             transparency_enabled: TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
             transparency_alpha: TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
             transparency_blacklist: TRANSPARENCY_BLACKLIST.lock().clone(),
@@ -448,6 +443,7 @@ impl WindowManager {
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
+            stackbar_manager: Default::default(),
         })
     }
 
@@ -1395,6 +1391,8 @@ impl WindowManager {
         let offset = self.work_area_offset;
         let border_width = self.border_manager.border_width;
         let border_offset = self.border_manager.border_offset;
+        let stackbar_mode = self.stackbar_manager.globals.mode;
+        let stackbar_tab_height = self.stackbar_manager.globals.tab_height;
 
         if let Some(monitor) = self.monitors_mut().get_mut(monitor_idx) {
             let container_padding = monitor
@@ -1418,6 +1416,8 @@ impl WindowManager {
                     work_area_offset,
                     window_based_work_area_offset,
                     window_based_work_area_offset_limit,
+                    stackbar_mode,
+                    stackbar_tab_height,
                 });
             }
         }
