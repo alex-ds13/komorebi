@@ -1,23 +1,16 @@
+use super::StackbarGlobals;
+use super::StackbarMessage;
 use crate::container::Container;
 use crate::core::BorderStyle;
 use crate::core::Rect;
 use crate::core::StackbarLabel;
-use crate::stackbar_manager::STACKBARS_CONTAINERS;
-use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use crate::stackbar_manager::STACKBAR_FONT_FAMILY;
-use crate::stackbar_manager::STACKBAR_FONT_SIZE;
-use crate::stackbar_manager::STACKBAR_LABEL;
-use crate::stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use crate::stackbar_manager::STACKBAR_TAB_HEIGHT;
-use crate::stackbar_manager::STACKBAR_TAB_WIDTH;
-use crate::stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 use crate::windows_api;
 use crate::WindowsApi;
 use crate::DEFAULT_CONTAINER_PADDING;
 use crate::WINDOWS_11;
 use crossbeam_utils::atomic::AtomicConsume;
+use std::collections::HashMap;
 use std::os::windows::ffi::OsStrExt;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::Duration;
 use windows::core::PCWSTR;
@@ -70,7 +63,7 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 use windows::Win32::UI::WindowsAndMessaging::WS_VISIBLE;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Stackbar {
     pub hwnd: isize,
 }
@@ -154,30 +147,34 @@ impl Stackbar {
         WindowsApi::close_window(self.hwnd)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &self,
+        globals: StackbarGlobals,
         container_padding: i32,
-        container: &mut Container,
+        container: &Container,
+        stackbars_containers: &mut HashMap<isize, Container>,
         layout: &Rect,
         border_width: i32,
         border_offset: i32,
         border_style: BorderStyle,
     ) -> color_eyre::Result<()> {
-        let width = STACKBAR_TAB_WIDTH.load_consume();
-        let height = STACKBAR_TAB_HEIGHT.load_consume();
+        let width = globals.tab_width;
+        let height = globals.tab_height;
         let gap = DEFAULT_CONTAINER_PADDING.load_consume();
-        let background = STACKBAR_TAB_BACKGROUND_COLOUR.load_consume();
-        let focused_text_colour = STACKBAR_FOCUSED_TEXT_COLOUR.load_consume();
-        let unfocused_text_colour = STACKBAR_UNFOCUSED_TEXT_COLOUR.load_consume();
+        let background = globals.tab_background_colour;
+        let focused_text_colour = globals.focused_text_colour;
+        let unfocused_text_colour = globals.unfocused_text_colour;
+        let font_family = &globals.font_family;
+        let font_size = globals.font_size;
+        let stackbar_label = globals.label;
 
-        let mut stackbars_containers = STACKBARS_CONTAINERS.lock();
         stackbars_containers.insert(self.hwnd, container.clone());
 
         let mut layout = *layout;
-        let workspace_specific_offset =
-            border_width + border_offset + container_padding;
+        let workspace_specific_offset = border_width + border_offset + container_padding;
 
-        layout.top -= workspace_specific_offset + STACKBAR_TAB_HEIGHT.load_consume();
+        layout.top -= workspace_specific_offset + height;
         layout.left -= workspace_specific_offset;
 
         WindowsApi::position_window(self.hwnd, &layout, false)?;
@@ -199,7 +196,7 @@ impl Stackbar {
                 ..Default::default()
             };
 
-            if let Some(font_name) = &*STACKBAR_FONT_FAMILY.lock() {
+            if let Some(font_name) = font_family {
                 let font = wide_string(font_name);
                 for (i, &c) in font.iter().enumerate() {
                     logfont.lfFaceName[i] = c;
@@ -207,7 +204,7 @@ impl Stackbar {
             }
 
             let logical_height = -MulDiv(
-                STACKBAR_FONT_SIZE.load(Ordering::SeqCst),
+                font_size,
                 72,
                 GetDeviceCaps(Option::from(hdc), LOGPIXELSY),
             );
@@ -262,7 +259,7 @@ impl Stackbar {
                     }
                 }
 
-                let label = match STACKBAR_LABEL.load() {
+                let label = match stackbar_label {
                     StackbarLabel::Process => {
                         let exe = window.exe()?;
                         exe.trim_end_matches(".exe").to_string()
@@ -295,13 +292,6 @@ impl Stackbar {
         Ok(())
     }
 
-    pub fn get_position_from_container_layout(&self, layout: &Rect) -> Rect {
-        Rect {
-            bottom: STACKBAR_TAB_HEIGHT.load_consume(),
-            ..*layout
-        }
-    }
-
     unsafe extern "system" fn callback(
         hwnd: HWND,
         msg: u32,
@@ -311,60 +301,11 @@ impl Stackbar {
         unsafe {
             match msg {
                 WM_LBUTTONDOWN => {
-                    let stackbars_containers = STACKBARS_CONTAINERS.lock();
-                    if let Some(container) = stackbars_containers.get(&(hwnd.0 as isize)) {
-                        let x = l_param.0 as i32 & 0xFFFF;
-                        let y = (l_param.0 as i32 >> 16) & 0xFFFF;
-
-                        let width = STACKBAR_TAB_WIDTH.load_consume();
-                        let height = STACKBAR_TAB_HEIGHT.load_consume();
-                        let gap = DEFAULT_CONTAINER_PADDING.load_consume();
-
-                        let focused_window_idx = container.focused_window_idx();
-                        let focused_window_rect = WindowsApi::window_rect(
-                            container.focused_window().cloned().unwrap_or_default().hwnd,
-                        )
-                        .unwrap_or_default();
-
-                        for (index, window) in container.windows().iter().enumerate() {
-                            let left = gap + (index as i32 * (width + gap));
-                            let right = left + width;
-                            let top = 0;
-                            let bottom = height;
-
-                            if x >= left && x <= right && y >= top && y <= bottom {
-                                // If we are focusing a window that isn't currently focused in the
-                                // stackbar, make sure we update its location so that it doesn't render
-                                // on top of other tiles before eventually ending up in the correct
-                                // tile
-                                if index != focused_window_idx {
-                                    if let Err(err) =
-                                        window.set_position(&focused_window_rect, false)
-                                    {
-                                        tracing::error!(
-                                        "stackbar WM_LBUTTONDOWN repositioning error: hwnd {} ({})",
-                                        *window,
-                                        err
-                                    );
-                                    }
-                                }
-
-                                // Restore the window corresponding to the tab we have clicked
-                                window.restore_with_border(false);
-                                if let Err(err) = window.focus(false) {
-                                    tracing::error!(
-                                        "stackbar WMLBUTTONDOWN focus error: hwnd {} ({})",
-                                        *window,
-                                        err
-                                    );
-                                }
-                            } else {
-                                // Hide any windows in the stack that don't correspond to the window
-                                // we have clicked
-                                window.hide_with_border(false);
-                            }
-                        }
-                    }
+                    let x = l_param.0 as i32 & 0xFFFF;
+                    let y = (l_param.0 as i32 >> 16) & 0xFFFF;
+                    super::send_notification(StackbarMessage::ButtonDown(
+                        (hwnd.0 as isize, x, y).into(),
+                    ));
 
                     LRESULT(0)
                 }
