@@ -3,100 +3,158 @@ mod stackbar;
 use crate::container::Container;
 use crate::core::StackbarLabel;
 use crate::core::StackbarMode;
+use crate::monitor::Monitor;
+use crate::ring::Ring;
+use crate::runtime;
 use crate::stackbar_manager::stackbar::Stackbar;
+use crate::BorderStyle;
 use crate::WindowManager;
 use crate::WindowsApi;
 use crate::DEFAULT_CONTAINER_PADDING;
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
-use crossbeam_utils::atomic::AtomicCell;
 use crossbeam_utils::atomic::AtomicConsume;
-use lazy_static::lazy_static;
-use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::OnceLock;
 
-pub static STACKBAR_FONT_SIZE: AtomicI32 = AtomicI32::new(0); // 0 will produce the system default
 pub static STACKBAR_FOCUSED_TEXT_COLOUR: AtomicU32 = AtomicU32::new(16777215); // white
 pub static STACKBAR_UNFOCUSED_TEXT_COLOUR: AtomicU32 = AtomicU32::new(11776947); // gray text
 pub static STACKBAR_TAB_BACKGROUND_COLOUR: AtomicU32 = AtomicU32::new(3355443); // gray
-pub static STACKBAR_TAB_HEIGHT: AtomicI32 = AtomicI32::new(40);
-pub static STACKBAR_TAB_WIDTH: AtomicI32 = AtomicI32::new(200);
-pub static STACKBAR_LABEL: AtomicCell<StackbarLabel> = AtomicCell::new(StackbarLabel::Process);
-pub static STACKBAR_MODE: AtomicCell<StackbarMode> = AtomicCell::new(StackbarMode::OnStack);
 
 pub static STACKBAR_TEMPORARILY_DISABLED: AtomicBool = AtomicBool::new(false);
 
-lazy_static! {
-    pub static ref STACKBAR_STATE: Mutex<HashMap<String, Stackbar>> = Mutex::new(HashMap::new());
-    pub static ref STACKBAR_FONT_FAMILY: Mutex<Option<String>> = Mutex::new(None);
-    static ref STACKBARS_MONITORS: Mutex<HashMap<String, usize>> = Mutex::new(HashMap::new());
-    static ref STACKBARS_CONTAINERS: Mutex<HashMap<isize, Container>> = Mutex::new(HashMap::new());
+/// Responsible for handling all stackbar related logic and control
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct StackbarManager {
+    pub stackbars: HashMap<String, Stackbar>,
+    pub stackbars_containers: HashMap<isize, Container>,
+    pub stackbars_monitors: HashMap<String, usize>,
+    pub globals: StackbarGlobals,
 }
 
-pub struct Notification;
-
-static CHANNEL: OnceLock<(Sender<Notification>, Receiver<Notification>)> = OnceLock::new();
-
-pub fn channel() -> &'static (Sender<Notification>, Receiver<Notification>) {
-    CHANNEL.get_or_init(|| crossbeam_channel::bounded(20))
+/// Contains all the global data related to the stackbars
+#[derive(Debug, Clone, PartialEq)]
+pub struct StackbarGlobals {
+    pub tab_width: i32,
+    pub tab_height: i32,
+    pub label: StackbarLabel,
+    pub mode: StackbarMode,
+    pub focused_text_colour: u32,
+    pub unfocused_text_colour: u32,
+    pub tab_background_colour: u32,
+    pub font_family: Option<String>,
+    pub font_size: i32,
 }
 
-fn event_tx() -> Sender<Notification> {
-    channel().0.clone()
-}
-
-fn event_rx() -> Receiver<Notification> {
-    channel().1.clone()
-}
-
-pub fn send_notification() {
-    if event_tx().try_send(Notification).is_err() {
-        tracing::warn!("channel is full; dropping notification")
-    }
-}
-
-pub fn should_have_stackbar(window_count: usize) -> bool {
-    match STACKBAR_MODE.load() {
-        StackbarMode::Always => true,
-        StackbarMode::OnStack => window_count > 1,
-        StackbarMode::Never => false,
-    }
-}
-
-pub fn listen_for_notifications(wm: Arc<Mutex<WindowManager>>) {
-    std::thread::spawn(move || loop {
-        match handle_notifications(wm.clone()) {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
+impl Default for StackbarGlobals {
+    fn default() -> Self {
+        Self {
+            tab_width: 200,
+            tab_height: 40,
+            label: Default::default(),
+            mode: Default::default(),
+            focused_text_colour: 16777215, // white
+            unfocused_text_colour: 11776947, // gray text
+            tab_background_colour: 3355443, // gray
+            font_family: None,
+            font_size: 0, // 0 will produce the system default
         }
-    });
+    }
 }
 
-pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
-    tracing::info!("listening");
+#[derive(Debug, Clone, PartialEq)]
+pub enum StackbarMessage {
+    Update,
+    ButtonDown(ButtonDownInfo),
+}
 
-    let receiver = event_rx();
+impl From<StackbarMessage> for runtime::Control {
+    fn from(value: StackbarMessage) -> Self {
+        runtime::Control::Stackbar(value)
+    }
+}
 
-    'receiver: for _ in receiver {
-        let mut stackbars = STACKBAR_STATE.lock();
-        let mut stackbars_monitors = STACKBARS_MONITORS.lock();
+#[derive(Debug, Clone, PartialEq)]
+pub struct ButtonDownInfo {
+    pub hwnd: isize,
+    pub x: i32,
+    pub y: i32,
+}
 
-        // Check the wm state every time we receive a notification
-        let mut state = wm.lock();
+impl From<(isize, i32, i32)> for ButtonDownInfo {
+    fn from(value: (isize, i32, i32)) -> Self {
+        ButtonDownInfo {
+            hwnd: value.0,
+            x: value.1,
+            y: value.2,
+        }
+    }
+}
+
+/// Represents the info from the `WindowManager` that is needed by the `StackbarManager`
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowManagerInfo {
+    pub is_paused: bool,
+    pub monitors: Ring<Monitor>,
+    pub border_width: i32,
+    pub border_offset: i32,
+    pub border_style: BorderStyle,
+}
+
+impl From<&WindowManager> for WindowManagerInfo {
+    fn from(value: &WindowManager) -> Self {
+        let is_paused = value.is_paused;
+        let monitors = value.monitors.clone();
+        let border_width = value.border_manager.border_width;
+        let border_offset = value.border_manager.border_offset;
+        let border_style = value.border_manager.border_style;
+
+        WindowManagerInfo {
+            is_paused,
+            monitors,
+            border_width,
+            border_offset,
+            border_style,
+        }
+    }
+}
+
+impl WindowManager {
+    pub fn to_stackbar_info(&self) -> WindowManagerInfo {
+        self.into()
+    }
+}
+
+pub fn send_notification(message: StackbarMessage) {
+    runtime::send_message(message)
+}
+
+pub fn send_update() {
+    runtime::send_message(StackbarMessage::Update)
+}
+
+impl StackbarManager {
+    pub fn update(
+        &mut self,
+        message: StackbarMessage,
+        wm_info: WindowManagerInfo,
+    ) -> color_eyre::Result<()> {
+        match message {
+            StackbarMessage::Update => {
+                self.update_stackbars(wm_info)?;
+            }
+            StackbarMessage::ButtonDown(info) => self.button_down(info),
+        }
+        Ok(())
+    }
+
+    pub fn update_stackbars(&mut self, wm_info: WindowManagerInfo) -> color_eyre::Result<()> {
+        let stackbars = &mut self.stackbars;
+        let stackbars_monitors = &mut self.stackbars_monitors;
 
         // If stackbars are disabled
-        if matches!(STACKBAR_MODE.load(), StackbarMode::Never)
+        if matches!(self.globals.mode, StackbarMode::Never)
             || STACKBAR_TEMPORARILY_DISABLED.load(Ordering::SeqCst)
         {
             for (_, stackbar) in stackbars.iter() {
@@ -104,16 +162,16 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
             }
 
             stackbars.clear();
-            continue 'receiver;
+            return Ok(());
         }
 
-        let border_width = state.border_manager.border_width;
-        let border_offset = state.border_manager.border_offset;
-        let border_style = state.border_manager.border_style;
+        let border_width = wm_info.border_width;
+        let border_offset = wm_info.border_offset;
+        let border_style = wm_info.border_style;
 
-        for (monitor_idx, m) in state.monitors_mut().iter_mut().enumerate() {
+        for (monitor_idx, m) in wm_info.monitors.elements().iter().enumerate() {
             // Only operate on the focused workspace of each monitor
-            if let Some(ws) = m.focused_workspace_mut() {
+            if let Some(ws) = m.focused_workspace() {
                 // Workspaces with tiling disabled don't have stackbars
                 if !ws.tile() {
                     let mut to_remove = vec![];
@@ -128,7 +186,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                         stackbars.remove(id);
                     }
 
-                    continue 'receiver;
+                    return Ok(());
                 }
 
                 let is_maximized =
@@ -149,7 +207,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                         stackbars.remove(id);
                     }
 
-                    continue 'receiver;
+                    return Ok(());
                 }
 
                 // Destroy any stackbars not associated with the focused workspace
@@ -177,12 +235,9 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                     .container_padding()
                     .unwrap_or_else(|| DEFAULT_CONTAINER_PADDING.load_consume());
 
-                'containers: for container in ws.containers_mut() {
-                    let should_add_stackbar = match STACKBAR_MODE.load() {
-                        StackbarMode::Always => true,
-                        StackbarMode::OnStack => container.windows().len() > 1,
-                        StackbarMode::Never => false,
-                    };
+                'containers: for container in ws.containers() {
+                    let should_add_stackbar =
+                        should_have_stackbar(&self.globals.mode, container.windows().len());
 
                     if !should_add_stackbar {
                         if let Some(stackbar) = stackbars.get(container.id()) {
@@ -201,7 +256,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                             if let Ok(stackbar) = Stackbar::create(container.id()) {
                                 entry.insert(stackbar)
                             } else {
-                                continue 'receiver;
+                                return Ok(());
                             }
                         }
                     };
@@ -213,8 +268,10 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                     )?;
 
                     stackbar.update(
+                        self.globals.clone(),
                         container_padding,
                         container,
+                        &mut self.stackbars_containers,
                         &rect,
                         border_width,
                         border_offset,
@@ -223,7 +280,68 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                 }
             }
         }
+
+        Ok(())
     }
 
-    Ok(())
+    fn button_down(&mut self, info: ButtonDownInfo) {
+        let ButtonDownInfo { hwnd, x, y } = info;
+        let stackbars_containers = &mut self.stackbars_containers;
+        if let Some(container) = stackbars_containers.get(&hwnd) {
+            let width = self.globals.tab_width;
+            let height = self.globals.tab_height;
+            let gap = DEFAULT_CONTAINER_PADDING.load_consume();
+
+            let focused_window_idx = container.focused_window_idx();
+            let focused_window_rect = WindowsApi::window_rect(
+                container.focused_window().cloned().unwrap_or_default().hwnd,
+            )
+            .unwrap_or_default();
+
+            for (index, window) in container.windows().iter().enumerate() {
+                let left = gap + (index as i32 * (width + gap));
+                let right = left + width;
+                let top = 0;
+                let bottom = height;
+
+                if x >= left && x <= right && y >= top && y <= bottom {
+                    // If we are focusing a window that isn't currently focused in the
+                    // stackbar, make sure we update its location so that it doesn't render
+                    // on top of other tiles before eventually ending up in the correct
+                    // tile
+                    if index != focused_window_idx {
+                        if let Err(err) = window.set_position(&focused_window_rect, false) {
+                            tracing::error!(
+                                "stackbar WM_LBUTTONDOWN repositioning error: hwnd {} ({})",
+                                *window,
+                                err
+                            );
+                        }
+                    }
+
+                    // Restore the window corresponding to the tab we have clicked
+                    window.restore_with_border(false);
+                    if let Err(err) = window.focus(false) {
+                        tracing::error!(
+                            "stackbar WMLBUTTONDOWN focus error: hwnd {} ({})",
+                            *window,
+                            err
+                        );
+                    }
+                } else {
+                    // Hide any windows in the stack that don't correspond to the window
+                    // we have clicked
+                    window.hide_with_border(false);
+                }
+            }
+        }
+    }
+}
+
+pub fn should_have_stackbar(mode: &StackbarMode, window_count: usize) -> bool {
+    match mode {
+        StackbarMode::Always => true,
+        StackbarMode::OnStack => window_count > 1,
+        StackbarMode::Never => false,
+    }
 }
