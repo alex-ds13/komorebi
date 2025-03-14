@@ -200,40 +200,6 @@ impl Monitor {
         Ok(())
     }
 
-    /// Updates the `globals` field of all workspaces
-    pub fn update_workspaces_globals(
-        &mut self,
-        offset: Option<Rect>,
-        border_width: i32,
-        border_offset: i32,
-    ) {
-        let container_padding = self
-            .container_padding()
-            .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
-        let workspace_padding = self
-            .workspace_padding()
-            .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-        let work_area = *self.work_area_size();
-        let work_area_offset = self.work_area_offset.or(offset);
-        let window_based_work_area_offset = self.window_based_work_area_offset();
-        let window_based_work_area_offset_limit = self.window_based_work_area_offset_limit();
-        let floating_layer_behaviour = self.floating_layer_behaviour();
-
-        for workspace in self.workspaces_mut() {
-            workspace.globals = WorkspaceGlobals {
-                container_padding,
-                workspace_padding,
-                border_width,
-                border_offset,
-                work_area,
-                work_area_offset,
-                window_based_work_area_offset,
-                window_based_work_area_offset_limit,
-                floating_layer_behaviour,
-            }
-        }
-    }
-
     pub fn add_container(
         &mut self,
         container: Container,
