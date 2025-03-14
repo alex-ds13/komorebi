@@ -61,6 +61,7 @@ use crate::ring::Ring;
 use crate::should_act;
 use crate::should_act_individual;
 use crate::state::State;
+use crate::stackbar_manager;
 use crate::static_config::StaticConfig;
 use crate::transparency_manager;
 use crate::window::Window;
@@ -97,6 +98,7 @@ pub struct WindowManager {
     pub known_hwnds: HashMap<isize, (usize, usize)>,
     pub border_manager: border_manager::BorderManager,
     pub monitor_reconciliator: monitor_reconciliator::MonitorReconciliator,
+    pub stackbar_manager: stackbar_manager::StackbarManager,
 }
 
 impl AsRef<Self> for WindowManager {
@@ -176,6 +178,7 @@ impl WindowManager {
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
+            stackbar_manager: Default::default(),
         })
     }
 
@@ -1169,6 +1172,8 @@ impl WindowManager {
         let offset = self.work_area_offset;
         let border_width = self.border_manager.border_width;
         let border_offset = self.border_manager.border_offset;
+        let stackbar_mode = self.stackbar_manager.globals.mode;
+        let stackbar_tab_height = self.stackbar_manager.globals.tab_height;
 
         if let Some(monitor) = self.monitors_mut().get_mut(monitor_idx) {
             let container_padding = monitor
@@ -1177,14 +1182,14 @@ impl WindowManager {
             let workspace_padding = monitor
                 .workspace_padding
                 .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-            let work_area = *monitor.work_area_size();
+            let work_area = monitor.work_area_size;
             let work_area_offset = monitor.work_area_offset.or(offset);
-            let window_based_work_area_offset = monitor.window_based_work_area_offset();
-            let window_based_work_area_offset_limit = monitor.window_based_work_area_offset_limit();
-            let floating_layer_behaviour = monitor.floating_layer_behaviour();
+            let window_based_work_area_offset = monitor.window_based_work_area_offset;
+            let window_based_work_area_offset_limit = monitor.window_based_work_area_offset_limit;
+            let floating_layer_behaviour = monitor.floating_layer_behaviour;
 
             if let Some(workspace) = monitor.workspaces_mut().get_mut(workspace_idx) {
-                workspace.set_globals(WorkspaceGlobals {
+                workspace.globals = WorkspaceGlobals {
                     container_padding,
                     workspace_padding,
                     border_width,
@@ -1194,7 +1199,9 @@ impl WindowManager {
                     window_based_work_area_offset,
                     window_based_work_area_offset_limit,
                     floating_layer_behaviour,
-                });
+                    stackbar_mode,
+                    stackbar_tab_height,
+                };
             }
         }
     }
@@ -1575,9 +1582,6 @@ impl WindowManager {
             return Ok(());
         }
         let mouse_follows_focus = self.mouse_follows_focus;
-        let offset = self.work_area_offset;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
         let first_focused_workspace = {
             let first_monitor = self
                 .monitors()
@@ -1622,16 +1626,17 @@ impl WindowManager {
 
         // Set the focused workspaces for the first and second monitors
         if let Some(first_monitor) = self.monitors_mut().get_mut(first_idx) {
-            first_monitor.update_workspaces_globals(offset, border_width, border_offset);
             first_monitor.focus_workspace(second_focused_workspace)?;
             first_monitor.load_focused_workspace(mouse_follows_focus)?;
         }
 
         if let Some(second_monitor) = self.monitors_mut().get_mut(second_idx) {
-            second_monitor.update_workspaces_globals(offset, border_width, border_offset);
             second_monitor.focus_workspace(first_focused_workspace)?;
             second_monitor.load_focused_workspace(mouse_follows_focus)?;
         }
+
+        self.update_workspace_globals(first_idx, second_focused_workspace);
+        self.update_workspace_globals(second_idx, first_focused_workspace);
 
         self.update_focused_workspace_by_monitor_idx(second_idx)?;
         self.update_focused_workspace_by_monitor_idx(first_idx)
@@ -1825,9 +1830,6 @@ impl WindowManager {
     pub fn move_workspace_to_monitor(&mut self, idx: usize) -> eyre::Result<()> {
         tracing::info!("moving workspace");
         let mouse_follows_focus = self.mouse_follows_focus;
-        let offset = self.work_area_offset;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
         let workspace = self
             .remove_focused_workspace()
             .ok_or_eyre("there is no workspace")?;
@@ -1839,7 +1841,6 @@ impl WindowManager {
                 .ok_or_eyre("there is no monitor")?;
 
             target_monitor.workspaces_mut().push_back(workspace);
-            target_monitor.update_workspaces_globals(offset, border_width, border_offset);
             target_monitor.focus_workspace(target_monitor.workspaces().len().saturating_sub(1))?;
             target_monitor.load_focused_workspace(mouse_follows_focus)?;
         }

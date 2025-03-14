@@ -195,7 +195,7 @@ impl RenderDispatcher for MovementRenderDispatcher {
 
     fn pre_render(&self) -> eyre::Result<()> {
         stackbar_manager::STACKBAR_TEMPORARILY_DISABLED.store(true, Ordering::SeqCst);
-        stackbar_manager::send_notification();
+        stackbar_manager::send_update();
 
         Ok(())
     }
@@ -226,7 +226,7 @@ impl RenderDispatcher for MovementRenderDispatcher {
 
             stackbar_manager::STACKBAR_TEMPORARILY_DISABLED.store(false, Ordering::SeqCst);
 
-            stackbar_manager::send_notification();
+            stackbar_manager::send_update();
             transparency_manager::send_notification();
         }
 

@@ -4,6 +4,7 @@ use crate::listen_for_commands_tcp;
 use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::splash::check_mdm_enrollment;
+use crate::stackbar_manager;
 use crate::winevent_listener;
 use crate::RuleDebug;
 use crate::SocketMessage;
@@ -127,6 +128,7 @@ pub enum Control {
     Border(border_manager::BorderMessage),
     Reaper(reaper::ReaperNotification),
     Monitor(monitor_reconciliator::MonitorNotification),
+    Stackbar(stackbar_manager::StackbarMessage),
     WindowWithBorder(WindowWithBorderAction),
 }
 
@@ -140,6 +142,7 @@ impl std::fmt::Display for Control {
             Control::Monitor(monitor_notification) => {
                 write!(f, "Monitor({:?})", monitor_notification)
             }
+            Control::Stackbar(stackbar_message) => write!(f, "Stackbar({:?})", stackbar_message),
             Control::WindowWithBorder(action) => match action {
                 WindowWithBorderAction::Show(hwnd) => write!(f, "ShowWindowWithBorder({})", hwnd),
                 WindowWithBorderAction::Hide(hwnd) => write!(f, "HideWindowWithBorder({})", hwnd),
@@ -346,6 +349,16 @@ impl WindowManager {
                             tracing::error!("Error from 'handle_monitor_notification': {}", error);
                         }
                     }
+                    Control::Stackbar(message) => {
+                        if let Err(error) =
+                            self.stackbar_manager.update(message, self.to_stackbar_info())
+                        {
+                            tracing::error!(
+                                "Error from 'stackbar_manager.update()': {}",
+                                error
+                            );
+                        }
+                    }
                     Control::WindowWithBorder(action) => match action {
                         WindowWithBorderAction::Show(hwnd) => {
                             let window = Window::from(hwnd);
@@ -465,7 +478,10 @@ impl WindowManager {
                     | border_manager::BorderMessage::Lower(_)
                     | border_manager::BorderMessage::DestroyAll => true,
                 },
-                Control::Reaper(_) | Control::Monitor(_) | Control::WindowWithBorder(_) => true,
+                Control::Reaper(_)
+                | Control::Monitor(_)
+                | Control::Stackbar(_)
+                | Control::WindowWithBorder(_) => true,
             },
         });
     }

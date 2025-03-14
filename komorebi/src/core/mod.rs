@@ -275,16 +275,16 @@ pub struct SubscribeOptions {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StackbarMode {
     Always,
-    Never,
     #[default]
+    Never,
     OnStack,
 }
 
 #[derive(Debug, Copy, Default, Clone, Eq, PartialEq, Display, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StackbarLabel {
-    #[default]
     Process,
+    #[default]
     Title,
 }
 

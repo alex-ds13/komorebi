@@ -29,13 +29,6 @@ use crate::config_generation::MatchingRule;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::monitor::Monitor;
 use crate::ring::Ring;
-use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use crate::stackbar_manager::STACKBAR_LABEL;
-use crate::stackbar_manager::STACKBAR_MODE;
-use crate::stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use crate::stackbar_manager::STACKBAR_TAB_HEIGHT;
-use crate::stackbar_manager::STACKBAR_TAB_WIDTH;
-use crate::stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 use crate::transparency_manager::TRANSPARENCY_ALPHA;
 use crate::transparency_manager::TRANSPARENCY_ENABLED;
 use crate::workspace::Workspace;
@@ -179,19 +172,19 @@ impl From<&WindowManager> for GlobalState {
             border_style: value.border_manager.border_style,
             border_offset: value.border_manager.border_offset,
             border_width: value.border_manager.border_width,
-            stackbar_mode: STACKBAR_MODE.load(),
-            stackbar_label: STACKBAR_LABEL.load(),
+            stackbar_mode: value.stackbar_manager.globals.mode,
+            stackbar_label: value.stackbar_manager.globals.label,
             stackbar_focused_text_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_FOCUSED_TEXT_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.focused_text_colour,
             )),
             stackbar_unfocused_text_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_UNFOCUSED_TEXT_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.unfocused_text_colour,
             )),
             stackbar_tab_background_colour: Colour::Rgb(Rgb::from(
-                STACKBAR_TAB_BACKGROUND_COLOUR.load(Ordering::SeqCst),
+                value.stackbar_manager.globals.tab_background_colour,
             )),
-            stackbar_tab_width: STACKBAR_TAB_WIDTH.load(Ordering::SeqCst),
-            stackbar_height: STACKBAR_TAB_HEIGHT.load(Ordering::SeqCst),
+            stackbar_tab_width: value.stackbar_manager.globals.tab_width,
+            stackbar_height: value.stackbar_manager.globals.tab_height,
             transparency_enabled: TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
             transparency_alpha: TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
             transparency_blacklist: TRANSPARENCY_BLACKLIST.lock().clone(),

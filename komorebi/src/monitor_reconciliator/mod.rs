@@ -256,7 +256,7 @@ impl WindowManager {
                 for (m_idx, ws_idx) in to_update {
                     self.update_workspace_globals(m_idx, ws_idx);
                     if let Some(monitor) = self.monitors_mut().get_mut(m_idx) {
-                        tracing::info!("updated work area for {}", monitor.device_id());
+                        tracing::info!("updated work area for {}", monitor.device_id);
                         monitor.update_focused_workspace()?;
                     }
                 }
@@ -310,7 +310,7 @@ impl WindowManager {
                     if let Some(monitor) = self.monitors_mut().get_mut(m_idx) {
                         tracing::info!(
                             "updated monitor resolution/scaling for {}",
-                            monitor.device_id()
+                            monitor.device_id
                         );
                         monitor.update_focused_workspace()?;
                     }

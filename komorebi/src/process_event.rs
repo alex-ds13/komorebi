@@ -453,7 +453,7 @@ impl WindowManager {
                                             .add_window(window);
                                         workspace.layer = WorkspaceLayer::Tiling;
                                         self.update_focused_workspace(true, false)?;
-                                        stackbar_manager::send_notification();
+                                        stackbar_manager::send_update();
                                     }
                                 }
                             }
@@ -691,7 +691,7 @@ impl WindowManager {
                                         }
                                     }
 
-                                    stackbar_manager::send_notification();
+                                    stackbar_manager::send_update();
                                 }
                             }
                         }
@@ -767,7 +767,7 @@ impl WindowManager {
 
         border_manager::send_notification(Some(event.hwnd()));
         // transparency_manager::send_notification();
-        // stackbar_manager::send_notification();
+        stackbar_manager::send_update();
 
         // Too many spammy OBJECT_NAMECHANGE events from JetBrains IDEs
         if !matches!(
