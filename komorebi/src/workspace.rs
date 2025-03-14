@@ -21,7 +21,6 @@ use crate::locked_deque::LockedDeque;
 use crate::ring::Ring;
 use crate::should_act;
 use crate::stackbar_manager;
-use crate::stackbar_manager::STACKBAR_TAB_HEIGHT;
 use crate::static_config::WorkspaceConfig;
 use crate::window::Window;
 use crate::window::WindowDetails;
@@ -29,6 +28,7 @@ use crate::windows_api::WindowsApi;
 use crate::FloatingLayerBehaviour;
 use crate::KomorebiTheme;
 use crate::SocketMessage;
+use crate::StackbarMode;
 use crate::Wallpaper;
 use crate::WindowContainerBehaviour;
 use crate::DATA_DIR;
@@ -197,6 +197,8 @@ pub struct WorkspaceGlobals {
     pub window_based_work_area_offset: Option<Rect>,
     pub window_based_work_area_offset_limit: isize,
     pub floating_layer_behaviour: Option<FloatingLayerBehaviour>,
+    pub stackbar_mode: StackbarMode,
+    pub stackbar_tab_height: i32,
 }
 
 impl Workspace {
@@ -504,6 +506,8 @@ impl Workspace {
         let window_based_work_area_offset = self.globals().window_based_work_area_offset;
         let window_based_work_area_offset_limit =
             self.globals().window_based_work_area_offset_limit;
+        let stackbar_mode = self.globals().stackbar_mode;
+        let tab_height = self.globals().stackbar_tab_height;
 
         let mut adjusted_work_area = work_area_offset.map_or_else(
             || work_area,
@@ -606,8 +610,7 @@ impl Workspace {
                         layout.add_padding(border_offset);
                         layout.add_padding(border_width);
 
-                        if stackbar_manager::should_have_stackbar(window_count) {
-                            let tab_height = STACKBAR_TAB_HEIGHT.load(Ordering::SeqCst);
+                        if stackbar_manager::should_have_stackbar(&stackbar_mode, window_count) {
                             let total_height = tab_height + container_padding;
 
                             layout.top += total_height;

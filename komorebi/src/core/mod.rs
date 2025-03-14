@@ -271,8 +271,8 @@ pub struct SubscribeOptions {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StackbarMode {
     Always,
-    Never,
     #[default]
+    Never,
     OnStack,
 }
 
