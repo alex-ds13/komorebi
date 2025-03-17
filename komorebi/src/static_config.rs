@@ -38,7 +38,6 @@ use crate::monitor;
 use crate::monitor::Monitor;
 use crate::resolve_option_hashmap_usize_path;
 use crate::ring::Ring;
-use crate::theme_manager;
 use crate::transparency_manager;
 use crate::window;
 use crate::window_manager::WindowManager;
@@ -1177,8 +1176,8 @@ impl WindowManager {
             }
         }
 
-        if let Some(theme) = &config.theme {
-            theme_manager::send_notification(theme.clone());
+        if let Some(theme) = config.theme.take() {
+            self.update_theme(theme);
         }
 
         if let Some(path) = &config.app_specific_configuration_path {
@@ -1302,6 +1301,7 @@ impl StaticConfig {
             already_moved_window_handles: Arc::new(Mutex::new(HashSet::new())),
             uncloack_to_ignore: 0,
             tcp_port: None,
+            theme: None,
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
