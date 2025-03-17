@@ -54,9 +54,9 @@ impl Default for StackbarGlobals {
             tab_height: 40,
             label: Default::default(),
             mode: Default::default(),
-            focused_text_colour: 16777215, // white
+            focused_text_colour: 16777215,   // white
             unfocused_text_colour: 11776947, // gray text
-            tab_background_colour: 3355443, // gray
+            tab_background_colour: 3355443,  // gray
             font_family: None,
             font_size: 0, // 0 will produce the system default
         }
