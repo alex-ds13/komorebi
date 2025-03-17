@@ -79,7 +79,6 @@ use crate::state;
 use crate::state::GlobalState;
 use crate::state::State;
 use crate::static_config::StaticConfig;
-use crate::theme_manager;
 use crate::transparency_manager;
 use crate::window::RuleDebug;
 use crate::window::Window;
@@ -2261,7 +2260,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
                 reply.write_all(schema.as_bytes())?;
             }
             SocketMessage::Theme(ref theme) => {
-                theme_manager::send_notification(*theme.clone());
+                self.update_theme(*theme.clone());
             }
             // Deprecated commands
             SocketMessage::AltFocusHack(_)
@@ -2273,7 +2272,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
 
         notify_subscribers(
             Notification {
-                event: NotificationEvent::Socket(message.clone()),
+                event: NotificationEvent::Socket(message),
                 state: self.as_ref().into(),
             },
             initial_state.has_been_modified(self.as_ref()),

@@ -43,6 +43,7 @@ use crate::core::config_generation::MatchingRule;
 use crate::core::custom_layout::CustomLayout;
 
 use crate::CrossBoundaryBehaviour;
+use crate::KomorebiTheme;
 use crate::DATA_DIR;
 use crate::DEFAULT_CONTAINER_PADDING;
 use crate::DEFAULT_WORKSPACE_PADDING;
@@ -94,6 +95,7 @@ pub struct WindowManager {
     pub already_moved_window_handles: Arc<Mutex<HashSet<isize>>>,
     pub uncloack_to_ignore: usize,
     pub tcp_port: Option<usize>,
+    pub theme: Option<KomorebiTheme>,
     /// Maps each known window hwnd to the (monitor, workspace) index pair managing it
     pub known_hwnds: HashMap<isize, (usize, usize)>,
     pub border_manager: border_manager::BorderManager,
@@ -175,6 +177,7 @@ impl WindowManager {
             already_moved_window_handles: Arc::new(Mutex::new(HashSet::new())),
             uncloack_to_ignore: 0,
             tcp_port: None,
+            theme: None,
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
