@@ -51,7 +51,6 @@ use crate::notify_subscribers;
 use crate::runtime;
 use crate::stackbar_manager;
 use crate::static_config::StaticConfig;
-use crate::theme_manager;
 use crate::transparency_manager;
 use crate::window::RuleDebug;
 use crate::window::Window;
@@ -2072,7 +2071,7 @@ impl WindowManager {
                 reply.write_all(schema.as_bytes())?;
             }
             SocketMessage::Theme(theme) => {
-                theme_manager::send_notification(theme);
+                self.update_theme(theme);
             }
             // Deprecated commands
             SocketMessage::AltFocusHack(_)
