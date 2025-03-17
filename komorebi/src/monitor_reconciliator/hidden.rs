@@ -308,9 +308,7 @@ pub extern "system" fn hidden_hwnds(hwnd: HWND, lparam: LPARAM) -> BOOL {
 
     if let Ok(class) = WindowsApi::real_window_class_w(hwnd) {
         if class.starts_with("komorebi-hidden") {
-            let border = Hidden {
-                hwnd,
-            };
+            let border = Hidden { hwnd };
             hwnds.push(border);
         }
     }

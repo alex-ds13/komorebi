@@ -267,7 +267,9 @@ pub struct SubscribeOptions {
     pub filter_state_changes: bool,
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Display, Serialize, Deserialize, ValueEnum)]
+#[derive(
+    Debug, Default, Copy, Clone, Eq, PartialEq, Display, Serialize, Deserialize, ValueEnum,
+)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StackbarMode {
     Always,
