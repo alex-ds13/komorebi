@@ -255,13 +255,13 @@ impl From<&WindowManager> for GlobalState {
             stackbar_mode: value.stackbar_manager.globals.mode,
             stackbar_label: value.stackbar_manager.globals.label,
             stackbar_focused_text_colour: Colour::Rgb(Rgb::from(
-                value.stackbar_manager.globals.focused_text_colour
+                value.stackbar_manager.globals.focused_text_colour,
             )),
             stackbar_unfocused_text_colour: Colour::Rgb(Rgb::from(
-                value.stackbar_manager.globals.unfocused_text_colour
+                value.stackbar_manager.globals.unfocused_text_colour,
             )),
             stackbar_tab_background_colour: Colour::Rgb(Rgb::from(
-                value.stackbar_manager.globals.tab_background_colour
+                value.stackbar_manager.globals.tab_background_colour,
             )),
             stackbar_tab_width: value.stackbar_manager.globals.tab_width,
             stackbar_height: value.stackbar_manager.globals.tab_height,

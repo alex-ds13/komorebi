@@ -142,11 +142,15 @@ impl WindowManager {
         self.border_manager.kind_colours.monocle_colour = u32::from(Colour::from(monocle_border));
         self.border_manager.kind_colours.stack_colour = u32::from(Colour::from(stack_border));
         self.border_manager.kind_colours.floating_colour = u32::from(Colour::from(floating_border));
-        self.border_manager.kind_colours.unfocused_colour = u32::from(Colour::from(unfocused_border));
+        self.border_manager.kind_colours.unfocused_colour =
+            u32::from(Colour::from(unfocused_border));
 
-        self.stackbar_manager.globals.tab_background_colour = u32::from(Colour::from(stackbar_background));
-        self.stackbar_manager.globals.focused_text_colour = u32::from(Colour::from(stackbar_focused_text));
-        self.stackbar_manager.globals.unfocused_text_colour = u32::from(Colour::from(stackbar_unfocused_text));
+        self.stackbar_manager.globals.tab_background_colour =
+            u32::from(Colour::from(stackbar_background));
+        self.stackbar_manager.globals.focused_text_colour =
+            u32::from(Colour::from(stackbar_focused_text));
+        self.stackbar_manager.globals.unfocused_text_colour =
+            u32::from(Colour::from(stackbar_unfocused_text));
 
         self.theme = Some(theme);
 

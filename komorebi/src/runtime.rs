@@ -290,8 +290,9 @@ impl WindowManager {
                             }
                         }
                         Control::Stackbar(message) => {
-                            if let Err(error) =
-                                self.stackbar_manager.update(message, self.to_stackbar_info())
+                            if let Err(error) = self
+                                .stackbar_manager
+                                .update(message, self.to_stackbar_info())
                             {
                                 tracing::error!(
                                     "Error from 'stackbar_manager.update()': {}",
