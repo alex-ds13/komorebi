@@ -209,11 +209,8 @@ impl Stackbar {
                 }
             }
 
-            let logical_height = -MulDiv(
-                font_size,
-                72,
-                GetDeviceCaps(Option::from(hdc), LOGPIXELSY),
-            );
+            let logical_height =
+                -MulDiv(font_size, 72, GetDeviceCaps(Option::from(hdc), LOGPIXELSY));
 
             logfont.lfHeight = logical_height;
 
