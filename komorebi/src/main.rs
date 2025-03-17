@@ -31,10 +31,7 @@ use uds_windows::UnixStream;
 
 use komorebi::focus_manager;
 use komorebi::load_configuration;
-use komorebi::process_command::listen_for_commands;
-use komorebi::process_command::listen_for_commands_tcp;
 use komorebi::process_movement::listen_for_movements;
-use komorebi::reaper;
 use komorebi::static_config::StaticConfig;
 use komorebi::theme_manager;
 use komorebi::transparency_manager;
@@ -265,7 +262,6 @@ fn main() -> Result<()> {
 
     // transparency_manager::listen_for_notifications(wm.clone());
     // focus_manager::listen_for_notifications(wm.clone());
-    // theme_manager::listen_for_notifications();
 
     // if CUSTOM_FFM.load(Ordering::SeqCst) {
     //     listen_for_movements(wm.clone());

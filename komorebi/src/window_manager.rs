@@ -73,6 +73,7 @@ use crate::workspace::WorkspaceLayer;
 use crate::BorderColours;
 use crate::Colour;
 use crate::CrossBoundaryBehaviour;
+use crate::KomorebiTheme;
 use crate::Rgb;
 use crate::CUSTOM_FFM;
 use crate::DATA_DIR;
@@ -117,6 +118,7 @@ pub struct WindowManager {
     pub already_moved_window_handles: Arc<Mutex<HashSet<isize>>>,
     pub uncloack_to_ignore: usize,
     pub tcp_port: Option<usize>,
+    pub theme: Option<KomorebiTheme>,
     /// Maps each known window hwnd to the (monitor, workspace) index pair managing it
     pub known_hwnds: HashMap<isize, (usize, usize)>,
     pub border_manager: border_manager::BorderManager,
@@ -440,6 +442,7 @@ impl WindowManager {
             already_moved_window_handles: Arc::new(Mutex::new(HashSet::new())),
             uncloack_to_ignore: 0,
             tcp_port: None,
+            theme: None,
             known_hwnds: HashMap::new(),
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),

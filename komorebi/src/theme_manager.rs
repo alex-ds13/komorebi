@@ -2,73 +2,19 @@
 
 use crate::border_manager;
 use crate::stackbar_manager;
-use crate::stackbar_manager::STACKBAR_FOCUSED_TEXT_COLOUR;
-use crate::stackbar_manager::STACKBAR_TAB_BACKGROUND_COLOUR;
-use crate::stackbar_manager::STACKBAR_UNFOCUSED_TEXT_COLOUR;
 use crate::Colour;
 use crate::KomorebiTheme;
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
-use crossbeam_utils::atomic::AtomicCell;
-use std::ops::Deref;
-use std::sync::atomic::Ordering;
-use std::sync::OnceLock;
+use crate::WindowManager;
 
-pub struct Notification(KomorebiTheme);
-
-pub static CURRENT_THEME: AtomicCell<Option<KomorebiTheme>> = AtomicCell::new(None);
-
-impl Deref for Notification {
-    type Target = KomorebiTheme;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-static CHANNEL: OnceLock<(Sender<Notification>, Receiver<Notification>)> = OnceLock::new();
-
-pub fn channel() -> &'static (Sender<Notification>, Receiver<Notification>) {
-    CHANNEL.get_or_init(|| crossbeam_channel::bounded(20))
-}
-
-fn event_tx() -> Sender<Notification> {
-    channel().0.clone()
-}
-
-fn event_rx() -> Receiver<Notification> {
-    channel().1.clone()
-}
-
-// Currently this should only be used for async focus updates, such as
-// when an animation finishes and we need to focus to set the cursor
-// position if the user has mouse follows focus enabled
-pub fn send_notification(theme: KomorebiTheme) {
-    if event_tx().try_send(Notification(theme)).is_err() {
-        tracing::warn!("channel is full; dropping notification")
-    }
-}
-
-pub fn listen_for_notifications() {
-    std::thread::spawn(move || loop {
-        match handle_notifications() {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
+impl WindowManager {
+    /// Updates the colors from the `BorderManager` and the `StackbarManager` according to
+    /// the new `theme`
+    pub fn update_theme(&mut self, theme: KomorebiTheme) {
+        if self.theme == Some(theme) {
+            // Theme is already applied, so we can ignore it
+            tracing::trace!("ignoring already applied theme {:?}", &theme);
+            return;
         }
-    });
-}
-
-pub fn handle_notifications() -> color_eyre::Result<()> {
-    tracing::info!("listening");
-
-    let receiver = event_rx();
-
-    for notification in receiver {
-        let theme = &notification.0;
 
         let (
             single_border,
@@ -149,35 +95,35 @@ pub fn handle_notifications() -> color_eyre::Result<()> {
             } => {
                 let single_border = single_border
                     .unwrap_or(komorebi_themes::Base16Value::Base0D)
-                    .color32(*name);
+                    .color32(name);
 
                 let stack_border = stack_border
                     .unwrap_or(komorebi_themes::Base16Value::Base0B)
-                    .color32(*name);
+                    .color32(name);
 
                 let monocle_border = monocle_border
                     .unwrap_or(komorebi_themes::Base16Value::Base0F)
-                    .color32(*name);
+                    .color32(name);
 
                 let unfocused_border = unfocused_border
                     .unwrap_or(komorebi_themes::Base16Value::Base01)
-                    .color32(*name);
+                    .color32(name);
 
                 let floating_border = floating_border
                     .unwrap_or(komorebi_themes::Base16Value::Base09)
-                    .color32(*name);
+                    .color32(name);
 
                 let stackbar_focused_text = stackbar_focused_text
                     .unwrap_or(komorebi_themes::Base16Value::Base0B)
-                    .color32(*name);
+                    .color32(name);
 
                 let stackbar_unfocused_text = stackbar_unfocused_text
                     .unwrap_or(komorebi_themes::Base16Value::Base05)
-                    .color32(*name);
+                    .color32(name);
 
                 let stackbar_background = stackbar_background
                     .unwrap_or(komorebi_themes::Base16Value::Base01)
-                    .color32(*name);
+                    .color32(name);
 
                 (
                     single_border,
@@ -192,36 +138,19 @@ pub fn handle_notifications() -> color_eyre::Result<()> {
             }
         };
 
-        //TODO: ACTUALLY UPDATE THESE VALUES
-        todo!();
-        let (_s, r) = crossbeam_channel::bounded(20);
-        let mut wm = crate::WindowManager::new(r, None)?;
-        wm.border_manager.kind_colours.single_colour = u32::from(Colour::from(single_border));
-        wm.border_manager.kind_colours.monocle_colour = u32::from(Colour::from(monocle_border));
-        wm.border_manager.kind_colours.stack_colour = u32::from(Colour::from(stack_border));
-        wm.border_manager.kind_colours.floating_colour = u32::from(Colour::from(floating_border));
-        wm.border_manager.kind_colours.unfocused_colour = u32::from(Colour::from(unfocused_border));
+        self.border_manager.kind_colours.single_colour = u32::from(Colour::from(single_border));
+        self.border_manager.kind_colours.monocle_colour = u32::from(Colour::from(monocle_border));
+        self.border_manager.kind_colours.stack_colour = u32::from(Colour::from(stack_border));
+        self.border_manager.kind_colours.floating_colour = u32::from(Colour::from(floating_border));
+        self.border_manager.kind_colours.unfocused_colour = u32::from(Colour::from(unfocused_border));
 
-        STACKBAR_TAB_BACKGROUND_COLOUR.store(
-            u32::from(Colour::from(stackbar_background)),
-            Ordering::SeqCst,
-        );
+        self.stackbar_manager.globals.tab_background_colour = u32::from(Colour::from(stackbar_background));
+        self.stackbar_manager.globals.focused_text_colour = u32::from(Colour::from(stackbar_focused_text));
+        self.stackbar_manager.globals.unfocused_text_colour = u32::from(Colour::from(stackbar_unfocused_text));
 
-        STACKBAR_FOCUSED_TEXT_COLOUR.store(
-            u32::from(Colour::from(stackbar_focused_text)),
-            Ordering::SeqCst,
-        );
-
-        STACKBAR_UNFOCUSED_TEXT_COLOUR.store(
-            u32::from(Colour::from(stackbar_unfocused_text)),
-            Ordering::SeqCst,
-        );
-
-        CURRENT_THEME.store(Some(notification.0));
+        self.theme = Some(theme);
 
         border_manager::send_notification(None);
         stackbar_manager::send_update();
     }
-
-    Ok(())
 }
