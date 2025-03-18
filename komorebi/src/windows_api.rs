@@ -1,6 +1,5 @@
 use core::ffi::c_void;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::mem::size_of;
 
@@ -150,6 +149,7 @@ use crate::monitor::Monitor;
 use crate::ring::Ring;
 use crate::set_window_position::SetWindowPosition;
 use crate::windows_callbacks;
+use crate::RuleDebug;
 use crate::Window;
 use crate::WindowManager;
 use crate::DISPLAY_INDEX_PREFERENCES;
@@ -403,35 +403,44 @@ impl WindowsApi {
         unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }.process()
     }
 
-    pub fn load_workspace_information(monitors: &mut Ring<Monitor>) -> Result<()> {
+    pub fn load_workspace_information(
+        monitors: &mut Ring<Monitor>,
+        known_layered_hwnds: &Vec<isize>,
+    ) -> Result<()> {
         for monitor in monitors.elements_mut() {
             let monitor_name = monitor.name().clone();
             if let Some(workspace) = monitor.workspaces_mut().front_mut() {
+                let mut windows: Vec<Window> = Vec::new();
                 // EnumWindows will enumerate through windows on all monitors
                 Self::enum_windows(
                     Some(windows_callbacks::enum_window),
-                    workspace.containers_mut() as *mut VecDeque<Container> as isize,
+                    &mut windows as *mut Vec<Window> as isize,
                 )?;
+
+                // Keep only the windows that should be managed and that are on this monitor
+                windows.retain(|window| {
+                    window
+                        .should_manage(None, &mut RuleDebug::default(), known_layered_hwnds)
+                        .is_ok_and(|should_manage| {
+                            should_manage
+                                && Self::monitor_name_from_window(window.hwnd)
+                                    .is_ok_and(|name| name == monitor_name)
+                        })
+                });
+
+                *workspace.containers_mut() = windows
+                    .into_iter()
+                    .map(|window| {
+                        let mut container = Container::default();
+                        container.windows_mut().push_back(window);
+                        container
+                    })
+                    .collect();
 
                 // Ensure that the resize_dimensions Vec length matches the number of containers for
                 // the potential later calls to workspace.remove_window later in this fn
                 let len = workspace.containers().len();
                 workspace.resize_dimensions_mut().resize(len, None);
-
-                // We have to prune each monitor's primary workspace of undesired windows here
-                let mut windows_on_other_monitors = vec![];
-
-                for container in workspace.containers_mut() {
-                    for window in container.windows() {
-                        if Self::monitor_name_from_window(window.hwnd)? != monitor_name {
-                            windows_on_other_monitors.push(window.hwnd);
-                        }
-                    }
-                }
-
-                for hwnd in windows_on_other_monitors {
-                    workspace.remove_window(hwnd)?;
-                }
             }
         }
 
@@ -671,16 +680,6 @@ impl WindowsApi {
     #[allow(dead_code)]
     pub fn next_window(hwnd: isize) -> Result<isize> {
         unsafe { GetWindow(HWND(as_ptr!(hwnd)), GW_HWNDNEXT)? }.process()
-    }
-
-    pub fn alt_tab_windows() -> Result<Vec<Window>> {
-        let mut hwnds = vec![];
-        Self::enum_windows(
-            Some(windows_callbacks::alt_tab_windows),
-            &mut hwnds as *mut Vec<Window> as isize,
-        )?;
-
-        Ok(hwnds)
     }
 
     #[allow(dead_code)]
