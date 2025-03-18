@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use color_eyre::eyre;
 use color_eyre::eyre::OptionExt;
-use crossbeam_utils::atomic::AtomicConsume;
 
 use crate::core::OperationDirection;
 use crate::core::Rect;
@@ -45,14 +44,18 @@ impl WindowManager {
 
         let mut rule_debug = RuleDebug::default();
 
-        let should_manage = event.window().should_manage(Some(event), &mut rule_debug)?;
+        let should_manage = event.window().should_manage(
+            Some(event),
+            &mut rule_debug,
+            &self.transparency_manager.known_transparent_hwnds,
+        )?;
 
         // All event handlers below this point should only be processed if the event is
         // related to a window that should be managed by the WindowManager.
         if !should_manage {
             let mut transparency_override = false;
 
-            if transparency_manager::TRANSPARENCY_ENABLED.load_consume() {
+            if self.transparency_manager.enabled {
                 for m in self.monitors() {
                     for w in m.workspaces() {
                         let event_hwnd = event.window().hwnd;
@@ -112,7 +115,7 @@ impl WindowManager {
                     // TODO: when returning from another VD to the VD associated with komorebi
                     // if borders are enabled, they will not be drawn again until the user interacts
                     // with the workspace or forces a retile
-                    border_manager::destroy_all_borders()?;
+                    border_manager::destroy_all_borders();
 
                     // to be consumed by integrating gui applications like bars to know
                     // when to hide visual components which don't make sense when not on
@@ -766,7 +769,7 @@ impl WindowManager {
         )?;
 
         border_manager::send_notification(Some(event.hwnd()));
-        // transparency_manager::send_notification();
+        transparency_manager::send_update();
         stackbar_manager::send_update();
 
         // Too many spammy OBJECT_NAMECHANGE events from JetBrains IDEs

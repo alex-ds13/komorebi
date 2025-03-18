@@ -101,6 +101,7 @@ pub struct WindowManager {
     pub border_manager: border_manager::BorderManager,
     pub monitor_reconciliator: monitor_reconciliator::MonitorReconciliator,
     pub stackbar_manager: stackbar_manager::StackbarManager,
+    pub transparency_manager: transparency_manager::TransparencyManager,
 }
 
 impl AsRef<Self> for WindowManager {
@@ -182,6 +183,7 @@ impl WindowManager {
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
             stackbar_manager: Default::default(),
+            transparency_manager: Default::default(),
         })
     }
 
@@ -189,7 +191,10 @@ impl WindowManager {
     pub fn init(&mut self) -> eyre::Result<()> {
         tracing::info!("initialising");
         WindowsApi::load_monitor_information(self)?;
-        WindowsApi::load_workspace_information(&mut self.monitors)
+        WindowsApi::load_workspace_information(
+            &mut self.monitors,
+            &self.transparency_manager.known_transparent_hwnds,
+        )
     }
 
     #[tracing::instrument(skip(self, state))]
@@ -250,6 +255,8 @@ impl WindowManager {
             );
 
             let mouse_follows_focus = self.mouse_follows_focus;
+
+            self.transparency_manager.known_transparent_hwnds = state.known_transparent_hwnds;
 
             self.update_all_workspace_globals();
 
@@ -1456,7 +1463,7 @@ impl WindowManager {
 
         let no_titlebar = NO_TITLEBAR.lock();
         let regex_identifiers = REGEX_IDENTIFIERS.lock();
-        let known_transparent_hwnds = transparency_manager::known_hwnds();
+        let known_transparent_hwnds = &self.transparency_manager.known_transparent_hwnds;
         let border_implementation = self.border_manager.border_implementation;
 
         for monitor in self.monitors() {

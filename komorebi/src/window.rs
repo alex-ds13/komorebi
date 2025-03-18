@@ -227,7 +227,7 @@ impl RenderDispatcher for MovementRenderDispatcher {
             stackbar_manager::STACKBAR_TEMPORARILY_DISABLED.store(false, Ordering::SeqCst);
 
             stackbar_manager::send_update();
-            transparency_manager::send_notification();
+            transparency_manager::send_update();
         }
 
         Ok(())
@@ -790,6 +790,7 @@ impl Window {
         self,
         event: Option<WindowManagerEvent>,
         debug: &mut RuleDebug,
+        known_layered_hwnds: &Vec<isize>,
     ) -> eyre::Result<bool> {
         if !self.is_window() {
             return Ok(false);
@@ -850,7 +851,7 @@ impl Window {
                     if let (Ok(style), Ok(ex_style)) = (&self.style(), &self.ex_style()) {
                         debug.window_style = Some(*style);
                         debug.extended_window_style = Some(*ex_style);
-                        let eligible = window_is_eligible(self.hwnd, &title, &exe_name, &class, &path, style, ex_style, event, debug);
+                        let eligible = window_is_eligible(self.hwnd, &title, &exe_name, &class, &path, style, ex_style, event, debug, known_layered_hwnds);
                         debug.should_manage = eligible;
                         return Ok(eligible);
                     }
@@ -899,6 +900,7 @@ fn window_is_eligible(
     ex_style: &ExtendedWindowStyle,
     event: Option<WindowManagerEvent>,
     debug: &mut RuleDebug,
+    known_layered_hwnds: &[isize],
 ) -> bool {
     {
         let permaignore_classes = PERMAIGNORE_CLASSES.lock();
@@ -970,8 +972,6 @@ fn window_is_eligible(
     } else {
         false
     };
-
-    let known_layered_hwnds = transparency_manager::known_hwnds();
 
     allow_layered = if known_layered_hwnds.contains(&hwnd)
         // we always want to process hide events for windows with transparency, even on other

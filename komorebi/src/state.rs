@@ -29,8 +29,6 @@ use crate::config_generation::MatchingRule;
 use crate::config_generation::WorkspaceMatchingRule;
 use crate::monitor::Monitor;
 use crate::ring::Ring;
-use crate::transparency_manager::TRANSPARENCY_ALPHA;
-use crate::transparency_manager::TRANSPARENCY_ENABLED;
 use crate::workspace::Workspace;
 use komorebi_themes::colour::Colour;
 use komorebi_themes::colour::Rgb;
@@ -58,6 +56,7 @@ pub struct State {
     pub mouse_follows_focus: bool,
     pub has_pending_raise_op: bool,
     pub virtual_desktop_id: Option<Vec<u8>>,
+    pub known_transparent_hwnds: Vec<isize>,
 }
 
 impl State {
@@ -185,8 +184,8 @@ impl From<&WindowManager> for GlobalState {
             )),
             stackbar_tab_width: value.stackbar_manager.globals.tab_width,
             stackbar_height: value.stackbar_manager.globals.tab_height,
-            transparency_enabled: TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
-            transparency_alpha: TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
+            transparency_enabled: value.transparency_manager.enabled,
+            transparency_alpha: value.transparency_manager.alpha,
             transparency_blacklist: TRANSPARENCY_BLACKLIST.lock().clone(),
             remove_titlebars: REMOVE_TITLEBARS.load(Ordering::SeqCst),
             ignore_identifiers: IGNORE_IDENTIFIERS.lock().clone(),
@@ -294,6 +293,7 @@ impl From<&WindowManager> for State {
             has_pending_raise_op: wm.has_pending_raise_op,
             unmanaged_window_operation_behaviour: wm.unmanaged_window_operation_behaviour,
             virtual_desktop_id: wm.virtual_desktop_id.clone(),
+            known_transparent_hwnds: wm.transparency_manager.known_transparent_hwnds.clone(),
         }
     }
 }
