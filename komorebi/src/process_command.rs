@@ -2154,14 +2154,13 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
                 }
             },
             SocketMessage::ToggleTransparency => {
-                let current = transparency_manager::TRANSPARENCY_ENABLED.load(Ordering::SeqCst);
-                transparency_manager::TRANSPARENCY_ENABLED.store(!current, Ordering::SeqCst);
+                self.transparency_manager.enabled = !self.transparency_manager.enabled;
             }
             SocketMessage::Transparency(enable) => {
-                transparency_manager::TRANSPARENCY_ENABLED.store(enable, Ordering::SeqCst);
+                self.transparency_manager.enabled = enable;
             }
             SocketMessage::TransparencyAlpha(alpha) => {
-                transparency_manager::TRANSPARENCY_ALPHA.store(alpha, Ordering::SeqCst);
+                self.transparency_manager.alpha = alpha;
             }
             SocketMessage::StackbarMode(mode) => {
                 self.stackbar_manager.globals.mode = mode;
@@ -2273,7 +2272,11 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
             SocketMessage::DebugWindow(hwnd) => {
                 let window = Window::from(hwnd);
                 let mut rule_debug = RuleDebug::default();
-                let _ = window.should_manage(None, &mut rule_debug);
+                let _ = window.should_manage(
+                    None,
+                    &mut rule_debug,
+                    &self.transparency_manager.known_transparent_hwnds,
+                );
                 let schema = serde_json::to_string_pretty(&rule_debug)?;
 
                 reply.write_all(schema.as_bytes())?;
@@ -2302,7 +2305,7 @@ if (!(Get-Process komorebi-bar -ErrorAction SilentlyContinue))
         } else {
             border_manager::send_notification(None);
         }
-        // transparency_manager::send_notification();
+        transparency_manager::send_update();
         stackbar_manager::send_update();
 
         tracing::info!("processed");

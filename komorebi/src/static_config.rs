@@ -874,12 +874,8 @@ impl From<&WindowManager> for StaticConfig {
             border_offset: Option::from(value.border_manager.border_offset),
             border: Option::from(value.border_manager.enabled),
             border_colours,
-            transparency: Option::from(
-                transparency_manager::TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
-            ),
-            transparency_alpha: Option::from(
-                transparency_manager::TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
-            ),
+            transparency: Option::from(value.transparency_manager.enabled),
+            transparency_alpha: Option::from(value.transparency_manager.alpha),
             transparency_ignore_rules: None,
             border_style: Option::from(value.border_manager.border_style),
             border_z_order: None,
@@ -1007,9 +1003,14 @@ impl WindowManager {
             DEFAULT_WORKSPACE_PADDING.store(workspace, Ordering::SeqCst);
         }
 
-        self.border_manager.border_width = config.border_width.unwrap_or(8);
-        self.border_manager.border_offset = config.border_offset.unwrap_or(-1);
-        self.border_manager.enabled = config.border.unwrap_or(true);
+        let default_border_manager = border_manager::BorderManager::default();
+        self.border_manager.border_width = config
+            .border_width
+            .unwrap_or(default_border_manager.border_width);
+        self.border_manager.border_offset = config
+            .border_offset
+            .unwrap_or(default_border_manager.border_offset);
+        self.border_manager.enabled = config.border.unwrap_or(default_border_manager.enabled);
 
         if let Some(colours) = &config.border_colours {
             if let Some(single) = colours.single {
@@ -1064,10 +1065,12 @@ impl WindowManager {
             border_manager::send_notification(None);
         }
 
-        transparency_manager::TRANSPARENCY_ENABLED
-            .store(config.transparency.unwrap_or(false), Ordering::SeqCst);
-        transparency_manager::TRANSPARENCY_ALPHA
-            .store(config.transparency_alpha.unwrap_or(200), Ordering::SeqCst);
+        self.transparency_manager.enabled = config
+            .transparency
+            .unwrap_or(transparency_manager::TransparencyManager::default().enabled);
+        self.transparency_manager.alpha = config
+            .transparency_alpha
+            .unwrap_or(transparency_manager::TransparencyManager::default().alpha);
 
         let mut ignore_identifiers = IGNORE_IDENTIFIERS.lock();
         let mut regex_identifiers = REGEX_IDENTIFIERS.lock();
@@ -1306,6 +1309,7 @@ impl StaticConfig {
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
             stackbar_manager: Default::default(),
+            transparency_manager: Default::default(),
         };
 
         wm.apply_globals(&mut value)?;

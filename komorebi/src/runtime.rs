@@ -4,6 +4,7 @@ use crate::listen_for_commands_tcp;
 use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::stackbar_manager;
+use crate::transparency_manager;
 use crate::winevent_listener;
 use crate::RuleDebug;
 use crate::SocketMessage;
@@ -128,6 +129,7 @@ pub enum Control {
     Reaper(reaper::ReaperNotification),
     Monitor(monitor_reconciliator::MonitorNotification),
     Stackbar(stackbar_manager::StackbarMessage),
+    Transparency(transparency_manager::TransparencyMessage),
     WindowWithBorder(WindowWithBorderAction),
 }
 
@@ -142,6 +144,9 @@ impl std::fmt::Display for Control {
                 write!(f, "Monitor({:?})", monitor_notification)
             }
             Control::Stackbar(stackbar_message) => write!(f, "Stackbar({:?})", stackbar_message),
+            Control::Transparency(transparency_message) => {
+                write!(f, "Transparency({:?})", transparency_message)
+            }
             Control::WindowWithBorder(action) => match action {
                 WindowWithBorderAction::Show(hwnd) => write!(f, "ShowWindowWithBorder({})", hwnd),
                 WindowWithBorderAction::Hide(hwnd) => write!(f, "HideWindowWithBorder({})", hwnd),
@@ -356,6 +361,10 @@ impl WindowManager {
                             tracing::error!("Error from 'stackbar_manager.update()': {}", error);
                         }
                     }
+                    Control::Transparency(message) => {
+                        self.transparency_manager
+                            .update(message, self.to_transparency_info());
+                    }
                     Control::WindowWithBorder(action) => match action {
                         WindowWithBorderAction::Show(hwnd) => {
                             let window = Window::from(hwnd);
@@ -440,7 +449,11 @@ impl WindowManager {
                         let window = Window::from(window.hwnd);
 
                         window
-                            .should_manage(None, &mut RuleDebug::default())
+                            .should_manage(
+                                None,
+                                &mut RuleDebug::default(),
+                                &self.transparency_manager.known_transparent_hwnds,
+                            )
                             .is_ok_and(|v| v)
                     } else {
                         false
@@ -475,6 +488,7 @@ impl WindowManager {
                 Control::Reaper(_)
                 | Control::Monitor(_)
                 | Control::Stackbar(_)
+                | Control::Transparency(_)
                 | Control::WindowWithBorder(_) => true,
             },
         });

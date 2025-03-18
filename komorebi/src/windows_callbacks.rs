@@ -1,9 +1,5 @@
-use std::collections::VecDeque;
-
 use crate::border_manager::BorderMessage;
-use crate::container::Container;
 use crate::runtime;
-use crate::window::RuleDebug;
 use crate::window::Window;
 use crate::window_manager_event::WindowManagerEvent;
 use crate::windows_api::WindowsApi;
@@ -21,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
 use windows_core::BOOL;
 
 pub extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let containers = unsafe { &mut *(lparam.0 as *mut VecDeque<Container>) };
+    let windows = unsafe { &mut *(lparam.0 as *mut Vec<Window>) };
 
     let is_visible = WindowsApi::is_window_visible(hwnd.0 as isize);
     let is_window = WindowsApi::is_window(hwnd.0 as isize);
@@ -31,37 +27,11 @@ pub extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if is_visible && is_window && !is_minimized {
         let window = Window::from(hwnd);
 
-        if let Ok(should_manage) = window.should_manage(None, &mut RuleDebug::default()) {
-            if should_manage {
-                if is_maximized {
-                    WindowsApi::restore_window(window.hwnd);
-                }
-
-                let mut container = Container::default();
-                container.windows_mut().push_back(window);
-                containers.push_back(container);
-            }
+        if is_maximized {
+            WindowsApi::restore_window(window.hwnd);
         }
-    }
 
-    true.into()
-}
-
-pub extern "system" fn alt_tab_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let windows = unsafe { &mut *(lparam.0 as *mut Vec<Window>) };
-
-    let is_visible = WindowsApi::is_window_visible(hwnd.0 as isize);
-    let is_window = WindowsApi::is_window(hwnd.0 as isize);
-    let is_minimized = WindowsApi::is_iconic(hwnd.0 as isize);
-
-    if is_visible && is_window && !is_minimized {
-        let window = Window::from(hwnd);
-
-        if let Ok(should_manage) = window.should_manage(None, &mut RuleDebug::default()) {
-            if should_manage {
-                windows.push(window);
-            }
-        }
+        windows.push(window);
     }
 
     true.into()

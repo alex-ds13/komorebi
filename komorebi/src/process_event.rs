@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use color_eyre::eyre::anyhow;
 use color_eyre::Result;
-use crossbeam_utils::atomic::AtomicConsume;
 
 use crate::core::OperationDirection;
 use crate::core::Rect;
@@ -45,14 +44,18 @@ impl WindowManager {
 
         let mut rule_debug = RuleDebug::default();
 
-        let should_manage = event.window().should_manage(Some(event), &mut rule_debug)?;
+        let should_manage = event.window().should_manage(
+            Some(event),
+            &mut rule_debug,
+            &self.transparency_manager.known_transparent_hwnds,
+        )?;
 
         // All event handlers below this point should only be processed if the event is
         // related to a window that should be managed by the WindowManager.
         if !should_manage {
             let mut transparency_override = false;
 
-            if transparency_manager::TRANSPARENCY_ENABLED.load_consume() {
+            if self.transparency_manager.enabled {
                 for m in self.monitors() {
                     for w in m.workspaces() {
                         let event_hwnd = event.window().hwnd;
@@ -772,7 +775,7 @@ impl WindowManager {
         )?;
 
         border_manager::send_notification(Some(event.hwnd()));
-        // transparency_manager::send_notification();
+        transparency_manager::send_update();
         stackbar_manager::send_update();
 
         // Too many spammy OBJECT_NAMECHANGE events from JetBrains IDEs

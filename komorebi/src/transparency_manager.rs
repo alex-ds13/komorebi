@@ -1,14 +1,10 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
-use crossbeam_utils::atomic::AtomicConsume;
-use parking_lot::Mutex;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
-use std::sync::Arc;
-use std::sync::OnceLock;
 
+use crate::monitor::Monitor;
+use crate::ring::Ring;
+use crate::runtime;
 use crate::should_act;
 use crate::Window;
 use crate::WindowManager;
@@ -16,77 +12,87 @@ use crate::WindowsApi;
 use crate::REGEX_IDENTIFIERS;
 use crate::TRANSPARENCY_BLACKLIST;
 
-pub static TRANSPARENCY_ENABLED: AtomicBool = AtomicBool::new(false);
-pub static TRANSPARENCY_ALPHA: AtomicU8 = AtomicU8::new(200);
-
-static KNOWN_HWNDS: OnceLock<Mutex<Vec<isize>>> = OnceLock::new();
-
-pub struct Notification;
-
-static CHANNEL: OnceLock<(Sender<Notification>, Receiver<Notification>)> = OnceLock::new();
-
-pub fn known_hwnds() -> Vec<isize> {
-    let known = KNOWN_HWNDS.get_or_init(|| Mutex::new(Vec::new())).lock();
-    known.iter().copied().collect()
+/// Responsible for handling all transparency related logic and control
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransparencyManager {
+    pub enabled: bool,
+    pub alpha: u8,
+    pub known_transparent_hwnds: Vec<isize>,
 }
 
-pub fn channel() -> &'static (Sender<Notification>, Receiver<Notification>) {
-    CHANNEL.get_or_init(|| crossbeam_channel::bounded(20))
-}
-
-fn event_tx() -> Sender<Notification> {
-    channel().0.clone()
-}
-
-fn event_rx() -> Receiver<Notification> {
-    channel().1.clone()
-}
-
-pub fn send_notification() {
-    if event_tx().try_send(Notification).is_err() {
-        tracing::warn!("channel is full; dropping notification")
+impl Default for TransparencyManager {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            alpha: 200,
+            known_transparent_hwnds: Vec::new(),
+        }
     }
 }
 
-pub fn listen_for_notifications(wm: Arc<Mutex<WindowManager>>) {
-    std::thread::spawn(move || loop {
-        match handle_notifications(wm.clone()) {
-            Ok(()) => {
-                tracing::warn!("restarting finished thread");
-            }
-            Err(error) => {
-                tracing::warn!("restarting failed thread: {}", error);
-            }
-        }
-    });
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransparencyMessage {
+    Update,
 }
 
-pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
-    tracing::info!("listening");
+impl From<TransparencyMessage> for runtime::Control {
+    fn from(value: TransparencyMessage) -> Self {
+        runtime::Control::Transparency(value)
+    }
+}
 
-    let receiver = event_rx();
-    event_tx().send(Notification)?;
+/// Represents the info from the `WindowManager` that is needed by the `StackbarManager`
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowManagerInfo {
+    pub monitors: Ring<Monitor>,
+    pub focused_monitor_idx: usize,
+}
 
-    'receiver: for _ in receiver {
-        let known_hwnds = KNOWN_HWNDS.get_or_init(|| Mutex::new(Vec::new()));
-        if !TRANSPARENCY_ENABLED.load_consume() {
-            for hwnd in known_hwnds.lock().iter() {
+impl From<&WindowManager> for WindowManagerInfo {
+    fn from(value: &WindowManager) -> Self {
+        let monitors = value.monitors.clone();
+        let focused_monitor_idx = value.focused_monitor_idx();
+
+        WindowManagerInfo {
+            monitors,
+            focused_monitor_idx,
+        }
+    }
+}
+
+impl WindowManager {
+    pub fn to_transparency_info(&self) -> WindowManagerInfo {
+        self.into()
+    }
+}
+
+impl TransparencyManager {
+    pub fn update(&mut self, message: TransparencyMessage, wm_info: WindowManagerInfo) {
+        match message {
+            TransparencyMessage::Update => self.update_transparent_hwnds(wm_info),
+        }
+    }
+
+    fn update_transparent_hwnds(&mut self, wm_info: WindowManagerInfo) {
+        let known_hwnds = &mut self.known_transparent_hwnds;
+        if !self.enabled {
+            for hwnd in known_hwnds.iter() {
                 if let Err(error) = Window::from(*hwnd).opaque() {
                     tracing::error!("failed to make window {hwnd} opaque: {error}")
                 }
             }
 
-            continue 'receiver;
+            return;
         }
 
-        known_hwnds.lock().clear();
+        known_hwnds.clear();
 
-        // Check the wm state every time we receive a notification
-        let state = wm.lock();
+        let WindowManagerInfo {
+            monitors,
+            focused_monitor_idx,
+        } = wm_info;
 
-        let focused_monitor_idx = state.focused_monitor_idx();
-
-        'monitors: for (monitor_idx, m) in state.monitors.elements().iter().enumerate() {
+        'monitors: for (monitor_idx, m) in monitors.elements().iter().enumerate() {
             let focused_workspace_idx = m.focused_workspace_idx();
 
             'workspaces: for (workspace_idx, ws) in m.workspaces().iter().enumerate() {
@@ -178,14 +184,14 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                                             tracing::error!("failed to make unfocused window {hwnd} transparent: {error}" )
                                         }
                                         Ok(..) => {
-                                            known_hwnds.lock().push(window.hwnd);
+                                            known_hwnds.push(window.hwnd);
                                         }
                                     }
                                 }
                             } else {
                                 // just in case, this is useful when people are clicking around
                                 // on unfocused stackbar tabs
-                                known_hwnds.lock().push(window.hwnd);
+                                known_hwnds.push(window.hwnd);
                             }
                         }
                     // Otherwise, make it opaque
@@ -193,7 +199,7 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
                         let focused_window_idx = c.focused_window_idx();
                         for (window_idx, window) in c.windows().iter().enumerate() {
                             if window_idx != focused_window_idx {
-                                known_hwnds.lock().push(window.hwnd);
+                                known_hwnds.push(window.hwnd);
                             } else {
                                 if let Err(error) =
                                     c.focused_window().copied().unwrap_or_default().opaque()
@@ -210,6 +216,10 @@ pub fn handle_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result
             }
         }
     }
+}
 
-    Ok(())
+pub static TRANSPARENCY_ALPHA: AtomicU8 = AtomicU8::new(200);
+
+pub fn send_update() {
+    runtime::send_message(TransparencyMessage::Update);
 }
