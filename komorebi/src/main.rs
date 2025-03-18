@@ -33,8 +33,6 @@ use komorebi::focus_manager;
 use komorebi::load_configuration;
 use komorebi::process_movement::listen_for_movements;
 use komorebi::static_config::StaticConfig;
-use komorebi::theme_manager;
-use komorebi::transparency_manager;
 use komorebi::window_manager::WindowManager;
 use komorebi::windows_api::WindowsApi;
 use komorebi::winevent_listener;
@@ -219,6 +217,19 @@ fn main() -> Result<()> {
         WindowManager::new(winevent_listener::event_rx(), None)?
     };
 
+    let dumped_state = temp_dir().join("komorebi.state.json");
+
+    if !opts.clean_state && dumped_state.is_file() {
+        if let Ok(state) = serde_json::from_str(&std::fs::read_to_string(&dumped_state)?) {
+            wm.apply_state(state);
+        } else {
+            tracing::warn!(
+                "cannot apply state from {}; state struct is not up to date",
+                dumped_state.display()
+            );
+        }
+    }
+
     wm.init()?;
 
     if let Some(config) = &static_config {
@@ -237,19 +248,6 @@ fn main() -> Result<()> {
             while !INITIAL_CONFIGURATION_LOADED.load(Ordering::SeqCst) {
                 backoff.snooze();
             }
-        }
-    }
-
-    let dumped_state = temp_dir().join("komorebi.state.json");
-
-    if !opts.clean_state && dumped_state.is_file() {
-        if let Ok(state) = serde_json::from_str(&std::fs::read_to_string(&dumped_state)?) {
-            wm.apply_state(state);
-        } else {
-            tracing::warn!(
-                "cannot apply state from {}; state struct is not up to date",
-                dumped_state.display()
-            );
         }
     }
 

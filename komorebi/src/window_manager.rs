@@ -61,8 +61,6 @@ use crate::should_act_individual;
 use crate::stackbar_manager;
 use crate::static_config::StaticConfig;
 use crate::transparency_manager;
-use crate::transparency_manager::TRANSPARENCY_ALPHA;
-use crate::transparency_manager::TRANSPARENCY_ENABLED;
 use crate::window::Window;
 use crate::window_manager_event::WindowManagerEvent;
 use crate::windows_api::WindowsApi;
@@ -124,6 +122,7 @@ pub struct WindowManager {
     pub border_manager: border_manager::BorderManager,
     pub monitor_reconciliator: monitor_reconciliator::MonitorReconciliator,
     pub stackbar_manager: stackbar_manager::StackbarManager,
+    pub transparency_manager: transparency_manager::TransparencyManager,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -142,6 +141,7 @@ pub struct State {
     pub focus_follows_mouse: Option<FocusFollowsMouseImplementation>,
     pub mouse_follows_focus: bool,
     pub has_pending_raise_op: bool,
+    pub known_transparent_hwnds: Vec<isize>,
 }
 
 impl State {
@@ -265,8 +265,8 @@ impl From<&WindowManager> for GlobalState {
             )),
             stackbar_tab_width: value.stackbar_manager.globals.tab_width,
             stackbar_height: value.stackbar_manager.globals.tab_height,
-            transparency_enabled: TRANSPARENCY_ENABLED.load(Ordering::SeqCst),
-            transparency_alpha: TRANSPARENCY_ALPHA.load(Ordering::SeqCst),
+            transparency_enabled: value.transparency_manager.enabled,
+            transparency_alpha: value.transparency_manager.alpha,
             transparency_blacklist: TRANSPARENCY_BLACKLIST.lock().clone(),
             remove_titlebars: REMOVE_TITLEBARS.load(Ordering::SeqCst),
             ignore_identifiers: IGNORE_IDENTIFIERS.lock().clone(),
@@ -370,6 +370,7 @@ impl From<&WindowManager> for State {
             mouse_follows_focus: wm.mouse_follows_focus,
             has_pending_raise_op: wm.has_pending_raise_op,
             unmanaged_window_operation_behaviour: wm.unmanaged_window_operation_behaviour,
+            known_transparent_hwnds: wm.transparency_manager.known_transparent_hwnds.clone(),
         }
     }
 }
@@ -447,6 +448,7 @@ impl WindowManager {
             border_manager: Default::default(),
             monitor_reconciliator: Default::default(),
             stackbar_manager: Default::default(),
+            transparency_manager: Default::default(),
         })
     }
 
@@ -454,7 +456,10 @@ impl WindowManager {
     pub fn init(&mut self) -> Result<()> {
         tracing::info!("initialising");
         WindowsApi::load_monitor_information(self)?;
-        WindowsApi::load_workspace_information(&mut self.monitors)
+        WindowsApi::load_workspace_information(
+            &mut self.monitors,
+            &self.transparency_manager.known_transparent_hwnds,
+        )
     }
 
     #[tracing::instrument(skip(self, state))]
@@ -515,6 +520,8 @@ impl WindowManager {
             );
 
             let mouse_follows_focus = self.mouse_follows_focus;
+
+            self.transparency_manager.known_transparent_hwnds = state.known_transparent_hwnds;
 
             self.update_all_workspace_globals();
 
@@ -1671,7 +1678,7 @@ impl WindowManager {
 
         let no_titlebar = NO_TITLEBAR.lock();
         let regex_identifiers = REGEX_IDENTIFIERS.lock();
-        let known_transparent_hwnds = transparency_manager::known_hwnds();
+        let known_transparent_hwnds = &self.transparency_manager.known_transparent_hwnds;
         let border_implementation = self.border_manager.border_implementation;
 
         for monitor in self.monitors() {
