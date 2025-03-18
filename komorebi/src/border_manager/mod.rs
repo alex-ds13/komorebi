@@ -29,7 +29,7 @@ use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 
 /// Responsible for handling all border related logic and control
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BorderManager {
     pub enabled: bool,
     pub borders: HashMap<String, Box<Border>>,
@@ -41,6 +41,23 @@ pub struct BorderManager {
     pub border_style: BorderStyle,
     pub border_implementation: BorderImplementation,
     pub kind_colours: WindowKindColours,
+}
+
+impl Default for BorderManager {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            borders: Default::default(),
+            windows_borders: Default::default(),
+            tracking_hwnd: Default::default(),
+            wm_info: Default::default(),
+            border_width: 8,
+            border_offset: -1,
+            border_style: Default::default(),
+            border_implementation: Default::default(),
+            kind_colours: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
