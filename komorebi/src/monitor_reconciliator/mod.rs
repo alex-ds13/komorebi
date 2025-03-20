@@ -84,9 +84,10 @@ pub fn insert_in_monitor_cache(serial_or_device_id: &str, monitor: Monitor) {
 }
 
 pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
-    Ok(win32_display_data::connected_displays_all()
+    let mut added_serial_number_ids = vec![];
+    let mut monitors = win32_display_data::connected_displays_all()
         .flatten()
-        .map(|display| {
+        .map(|mut display| {
             let path = display.device_path;
 
             let (device, device_id) = if path.is_empty() {
@@ -103,6 +104,16 @@ pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
             let name = display.device_name.trim_start_matches(r"\\.\").to_string();
             let name = name.split('\\').collect::<Vec<_>>()[0].to_string();
 
+            if let Some(sn_id) = display.serial_number_id.as_ref() {
+                if !added_serial_number_ids.contains(sn_id) {
+                    added_serial_number_ids.push(sn_id.clone());
+                } else {
+                    // This is probably some stupid Acer monitor with duplicated serial number id,
+                    // so lets just remove the serial_number_id for the duplicated ones
+                    display.serial_number_id = None;
+                }
+            }
+
             monitor::new(
                 display.hmonitor,
                 display.size.into(),
@@ -113,7 +124,18 @@ pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
                 display.serial_number_id,
             )
         })
-        .collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+        // Remove duplicated serial number id of first instance
+        monitors.iter_mut().for_each(|m| {
+            if let Some(sn_id) = m.serial_number_id() {
+                if added_serial_number_ids.contains(sn_id) {
+                    m.serial_number_id = None;
+                }
+            }
+        });
+
+        Ok(monitors)
 }
 
 pub fn listen_for_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {
