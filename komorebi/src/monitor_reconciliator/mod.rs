@@ -84,7 +84,7 @@ pub fn insert_in_monitor_cache(serial_or_device_id: &str, monitor: Monitor) {
 }
 
 pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
-    let mut added_serial_number_ids = vec![];
+    let mut serial_number_ids_count = HashMap::new();
     let mut monitors = win32_display_data::connected_displays_all()
         .flatten()
         .map(|mut display| {
@@ -105,12 +105,13 @@ pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
             let name = name.split('\\').collect::<Vec<_>>()[0].to_string();
 
             if let Some(sn_id) = display.serial_number_id.as_ref() {
-                if !added_serial_number_ids.contains(sn_id) {
-                    added_serial_number_ids.push(sn_id.clone());
-                } else {
+                if let Some(count) = serial_number_ids_count.get_mut(sn_id) {
                     // This is probably some stupid Acer monitor with duplicated serial number id,
-                    // so lets just remove the serial_number_id for the duplicated ones
-                    display.serial_number_id = None;
+                    // so lets just rename the serial_number_id
+                    *count += 1;
+                    display.serial_number_id = Some(format!("{}({})", sn_id, count));
+                } else {
+                    serial_number_ids_count.insert(sn_id.clone(), 1);
                 }
             }
 
@@ -126,16 +127,16 @@ pub fn attached_display_devices() -> color_eyre::Result<Vec<Monitor>> {
         })
         .collect::<Vec<_>>();
 
-        // Remove duplicated serial number id of first instance
-        monitors.iter_mut().for_each(|m| {
-            if let Some(sn_id) = m.serial_number_id() {
-                if added_serial_number_ids.contains(sn_id) {
-                    m.serial_number_id = None;
-                }
+    // Rename duplicated serial number id of first instance
+    monitors.iter_mut().for_each(|m| {
+        if let Some(sn_id) = m.serial_number_id() {
+            if serial_number_ids_count.contains_key(sn_id) {
+                m.serial_number_id = Some(format!("{}(1)", sn_id));
             }
-        });
+        }
+    });
 
-        Ok(monitors)
+    Ok(monitors)
 }
 
 pub fn listen_for_notifications(wm: Arc<Mutex<WindowManager>>) -> color_eyre::Result<()> {

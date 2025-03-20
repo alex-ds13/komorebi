@@ -258,7 +258,7 @@ impl WindowsApi {
         let monitors = &mut wm.monitors;
         let monitor_usr_idx_map = &mut wm.monitor_usr_idx_map;
 
-        let mut added_serial_number_ids = vec![];
+        let mut serial_number_ids_count = HashMap::new();
         'read: for mut display in win32_display_data::connected_displays_all().flatten() {
             let path = display.device_path.clone();
 
@@ -283,12 +283,13 @@ impl WindowsApi {
             }
 
             if let Some(sn_id) = display.serial_number_id.as_ref() {
-                if !added_serial_number_ids.contains(sn_id) {
-                    added_serial_number_ids.push(sn_id.clone());
-                } else {
+                if let Some(count) = serial_number_ids_count.get_mut(sn_id) {
                     // This is probably some stupid Acer monitor with duplicated serial number id,
-                    // so lets just remove the serial_number_id for the duplicated ones
-                    display.serial_number_id = None;
+                    // so lets just rename the serial_number_id
+                    *count += 1;
+                    display.serial_number_id = Some(format!("{}({})", sn_id, count));
+                } else {
+                    serial_number_ids_count.insert(sn_id.clone(), 1);
                 }
             }
 
@@ -342,11 +343,11 @@ impl WindowsApi {
             .elements_mut()
             .retain(|m| m.name().ne("PLACEHOLDER"));
 
-        // Remove duplicated serial number id of first instance
+        // Rename duplicated serial number id of first instance
         monitors.elements_mut().iter_mut().for_each(|m| {
             if let Some(sn_id) = m.serial_number_id() {
-                if added_serial_number_ids.contains(sn_id) {
-                    m.serial_number_id = None;
+                if serial_number_ids_count.contains_key(sn_id) {
+                    m.serial_number_id = Some(format!("{}(1)", sn_id));
                 }
             }
         });
