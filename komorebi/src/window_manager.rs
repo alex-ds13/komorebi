@@ -458,6 +458,7 @@ impl WindowManager {
         WindowsApi::load_monitor_information(self)?;
         WindowsApi::load_workspace_information(
             &mut self.monitors,
+            &self.known_hwnds,
             &self.transparency_manager.known_transparent_hwnds,
         )
     }
@@ -603,6 +604,9 @@ impl WindowManager {
                     error,
                 );
             }
+
+            // Update known windows handles
+            self.update_known_hwnds();
         } else {
             tracing::warn!(
                 "cannot apply state from {}; some windows referenced in the state file no longer exist",
