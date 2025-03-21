@@ -1259,7 +1259,7 @@ impl WindowManager {
                                 to_focus = Some(*window);
                             } else {
                                 window.restore();
-                                window.raise()?;
+                                window.raise();
                             }
                         }
 
@@ -1267,19 +1267,19 @@ impl WindowManager {
                             // The focused window should be the last one raised to make sure it is
                             // on top
                             focused_window.restore();
-                            focused_window.raise()?;
+                            focused_window.raise();
                         }
 
                         for container in workspace.containers() {
                             if let Some(window) = container.focused_window() {
-                                window.lower()?;
+                                window.lower();
                             }
                         }
 
                         if let Some(monocle) = &workspace.monocle_container
                             && let Some(window) = monocle.focused_window()
                         {
-                            window.lower()?;
+                            window.lower();
                         }
                     }
                     WorkspaceLayer::Floating => {
@@ -1288,7 +1288,7 @@ impl WindowManager {
                         if let Some(monocle) = &workspace.monocle_container {
                             if let Some(window) = monocle.focused_window() {
                                 to_focus = Some(*window);
-                                window.raise()?;
+                                window.raise();
                             }
                             for window in workspace.floating_windows() {
                                 window.hide();
@@ -1301,7 +1301,7 @@ impl WindowManager {
                                     if i == focused_container_idx {
                                         to_focus = Some(*window);
                                     }
-                                    window.raise()?;
+                                    window.raise();
                                 }
                             }
 
@@ -1318,7 +1318,7 @@ impl WindowManager {
                             });
 
                             for window in window_idx_pairs {
-                                window.lower()?;
+                                window.lower();
                             }
                         }
                     }
