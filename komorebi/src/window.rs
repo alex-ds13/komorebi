@@ -10,7 +10,6 @@ use crate::animation::ANIMATION_ENABLED_PER_ANIMATION;
 use crate::animation::ANIMATION_MANAGER;
 use crate::animation::ANIMATION_STYLE_GLOBAL;
 use crate::animation::ANIMATION_STYLE_PER_ANIMATION;
-use crate::border_manager;
 use crate::com::SetCloak;
 use crate::core::config_generation::IdWithIdentifier;
 use crate::core::config_generation::MatchingRule;
@@ -772,20 +771,32 @@ impl Window {
     /// it. Use raise_and_focus_window to activate and focus a window.
     /// It also checks if there is a border attached to this window and if it is
     /// it raises it as well.
-    pub fn raise(self) -> Result<()> {
-        WindowsApi::raise_window(self.hwnd)?;
-        border_manager::raise_border(self.hwnd);
-        Ok(())
+    pub fn raise(self) {
+        runtime::send_message(runtime::WindowWithBorderAction::Raise(self.hwnd));
+    }
+
+    /// Raise the window to the top of the Z order, but do not activate or focus
+    /// it. Use raise_and_focus_window to activate and focus a window.
+    /// It also checks if there is a border attached to this window and if it is
+    /// it raises it as well.
+    pub fn internal_raise(self) -> Result<()> {
+        WindowsApi::raise_window(self.hwnd)
     }
 
     /// Lower the window to the bottom of the Z order, but do not activate or focus
     /// it.
     /// It also checks if there is a border attached to this window and if it is
     /// it lowers it as well.
-    pub fn lower(self) -> Result<()> {
-        WindowsApi::lower_window(self.hwnd)?;
-        border_manager::lower_border(self.hwnd);
-        Ok(())
+    pub fn lower(self) {
+        runtime::send_message(runtime::WindowWithBorderAction::Lower(self.hwnd));
+    }
+
+    /// Lower the window to the bottom of the Z order, but do not activate or focus
+    /// it.
+    /// It also checks if there is a border attached to this window and if it is
+    /// it lowers it as well.
+    pub fn internal_lower(self) -> Result<()> {
+        WindowsApi::lower_window(self.hwnd)
     }
 
     #[tracing::instrument(fields(exe, title), skip(debug))]
