@@ -263,6 +263,13 @@ fn main() -> Result<()> {
         WindowManager::new(winevent_listener::event_rx(), None)?
     };
 
+    tracing::info!("loading monitor information");
+    WindowsApi::load_monitor_information(&mut wm)?;
+
+    if let Some(config) = &static_config {
+        StaticConfig::postload(config, &mut wm)?;
+    }
+
     let dumped_state = temp_dir().join("komorebi.state.json");
 
     if !opts.clean_state && dumped_state.is_file() {
@@ -276,11 +283,12 @@ fn main() -> Result<()> {
         }
     }
 
-    wm.init()?;
-
-    if let Some(config) = &static_config {
-        StaticConfig::postload(config, &mut wm)?;
-    }
+    tracing::info!("loading open visible windows");
+    WindowsApi::load_workspace_information(
+        &mut wm.monitors,
+        &wm.known_hwnds,
+        &wm.transparency_manager.known_transparent_hwnds,
+    )?;
 
     if !opts.await_configuration && !INITIAL_CONFIGURATION_LOADED.load(Ordering::SeqCst) {
         INITIAL_CONFIGURATION_LOADED.store(true, Ordering::SeqCst);

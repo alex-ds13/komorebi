@@ -415,6 +415,7 @@ impl WindowsApi {
 
     pub fn load_workspace_information(
         monitors: &mut Ring<Monitor>,
+        known_hwnds: &HashMap<isize, (usize, usize)>,
         known_layered_hwnds: &Vec<isize>,
     ) -> Result<()> {
         for monitor in monitors.elements_mut() {
@@ -427,25 +428,25 @@ impl WindowsApi {
                     &mut windows as *mut Vec<Window> as isize,
                 )?;
 
-                // Keep only the windows that should be managed and that are on this monitor
+                // Keep only the windows that should be managed and that are on this monitor and
+                // that are not already managed from an existing state
                 windows.retain(|window| {
-                    window
-                        .should_manage(None, &mut RuleDebug::default(), known_layered_hwnds)
-                        .is_ok_and(|should_manage| {
-                            should_manage
-                                && Self::monitor_name_from_window(window.hwnd)
-                                    .is_ok_and(|name| name == monitor_name)
-                        })
+                    !known_hwnds.contains_key(&window.hwnd)
+                        && window
+                            .should_manage(None, &mut RuleDebug::default(), known_layered_hwnds)
+                            .is_ok_and(|should_manage| {
+                                should_manage
+                                    && Self::monitor_name_from_window(window.hwnd)
+                                        .is_ok_and(|name| name == monitor_name)
+                            })
                 });
 
-                *workspace.containers_mut() = windows
-                    .into_iter()
-                    .map(|window| {
-                        let mut container = Container::default();
-                        container.windows_mut().push_back(window);
-                        container
-                    })
-                    .collect();
+                let containers = windows.into_iter().map(|window| {
+                    let mut container = Container::default();
+                    container.windows_mut().push_back(window);
+                    container
+                });
+                workspace.containers_mut().extend(containers);
 
                 // Ensure that the resize_dimensions Vec length matches the number of containers for
                 // the potential later calls to workspace.remove_window later in this fn
