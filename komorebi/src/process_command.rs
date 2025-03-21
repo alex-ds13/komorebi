@@ -1098,19 +1098,19 @@ impl WindowManager {
                             if i == focused_idx {
                                 to_focus = Some(*window);
                             } else {
-                                window.raise()?;
+                                window.raise();
                             }
                         }
 
                         if let Some(focused_window) = &to_focus {
                             // The focused window should be the last one raised to make sure it is
                             // on top
-                            focused_window.raise()?;
+                            focused_window.raise();
                         }
 
                         for container in workspace.containers() {
                             if let Some(window) = container.focused_window() {
-                                window.lower()?;
+                                window.lower();
                             }
                         }
                     }
@@ -1123,7 +1123,7 @@ impl WindowManager {
                                 if i == focused_container_idx {
                                     to_focus = Some(*window);
                                 }
-                                window.raise()?;
+                                window.raise();
                             }
                         }
 
@@ -1140,7 +1140,7 @@ impl WindowManager {
                         });
 
                         for window in window_idx_pairs {
-                            window.lower()?;
+                            window.lower();
                         }
                     }
                 };

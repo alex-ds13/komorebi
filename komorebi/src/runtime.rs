@@ -150,6 +150,8 @@ impl std::fmt::Display for Control {
             Control::WindowWithBorder(action) => match action {
                 WindowWithBorderAction::Show(hwnd) => write!(f, "ShowWindowWithBorder({})", hwnd),
                 WindowWithBorderAction::Hide(hwnd) => write!(f, "HideWindowWithBorder({})", hwnd),
+                WindowWithBorderAction::Raise(hwnd) => write!(f, "RaiseWindowWithBorder({})", hwnd),
+                WindowWithBorderAction::Lower(hwnd) => write!(f, "LowerWindowWithBorder({})", hwnd),
             },
         }
     }
@@ -159,6 +161,8 @@ impl std::fmt::Display for Control {
 pub enum WindowWithBorderAction {
     Show(isize),
     Hide(isize),
+    Raise(isize),
+    Lower(isize),
 }
 
 impl From<WindowManagerEvent> for Message {
@@ -320,6 +324,22 @@ impl WindowManager {
                                 let window = Window::from(hwnd);
                                 let message = border_manager::BorderMessage::Hide(hwnd);
                                 window.internal_hide();
+                                self.update_border(message);
+                            }
+                            WindowWithBorderAction::Raise(hwnd) => {
+                                let window = Window::from(hwnd);
+                                let message = border_manager::BorderMessage::Raise(hwnd);
+                                if let Err(error) = window.internal_raise() {
+                                    tracing::error!("Error raising window: {}", error);
+                                }
+                                self.update_border(message);
+                            }
+                            WindowWithBorderAction::Lower(hwnd) => {
+                                let window = Window::from(hwnd);
+                                let message = border_manager::BorderMessage::Lower(hwnd);
+                                if let Err(error) = window.internal_lower() {
+                                    tracing::error!("Error lowering window: {}", error);
+                                }
                                 self.update_border(message);
                             }
                         },
