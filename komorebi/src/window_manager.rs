@@ -1784,7 +1784,7 @@ impl WindowManager {
                         }
 
                         if known_transparent_hwnds.contains(&window.hwnd) {
-                            window.opaque()?;
+                            window.opaque(self.transparency_manager.alpha)?;
                         }
 
                         if matches!(border_implementation, BorderImplementation::Windows) {
