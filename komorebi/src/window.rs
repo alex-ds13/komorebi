@@ -43,7 +43,6 @@ use crate::SLOW_APPLICATION_IDENTIFIERS;
 use crate::WSL2_UI_PROCESSES;
 use color_eyre::eyre;
 use color_eyre::Result;
-use crossbeam_utils::atomic::AtomicConsume;
 use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::Deserialize;
@@ -591,7 +590,13 @@ impl Window {
         WindowsApi::foreground_window().unwrap_or_default() == self.hwnd
     }
 
-    pub fn transparent(self) -> Result<()> {
+    pub fn transparent(self, alpha: u8) -> Result<()> {
+        if alpha == 255 {
+            let mut ex_style = self.ex_style()?;
+            ex_style.remove(ExtendedWindowStyle::LAYERED);
+            return self.update_ex_style(&ex_style);
+        }
+
         let animation_enabled = ANIMATION_ENABLED_PER_ANIMATION.lock();
         let transparent_enabled = animation_enabled.get(&TransparencyRenderDispatcher::PREFIX);
 
@@ -613,7 +618,7 @@ impl Window {
                 self.hwnd,
                 false,
                 WindowsApi::get_transparent(self.hwnd).unwrap_or(255),
-                transparency_manager::TRANSPARENCY_ALPHA.load_consume(),
+                alpha,
                 style,
             );
 
@@ -622,14 +627,17 @@ impl Window {
             let mut ex_style = self.ex_style()?;
             ex_style.insert(ExtendedWindowStyle::LAYERED);
             self.update_ex_style(&ex_style)?;
-            WindowsApi::set_transparent(
-                self.hwnd,
-                transparency_manager::TRANSPARENCY_ALPHA.load_consume(),
-            )
+            WindowsApi::set_transparent(self.hwnd, alpha)
         }
     }
 
-    pub fn opaque(self) -> Result<()> {
+    pub fn opaque(self, default_alpha: u8) -> Result<()> {
+        if default_alpha == 255 {
+            let mut ex_style = self.ex_style()?;
+            ex_style.remove(ExtendedWindowStyle::LAYERED);
+            return self.update_ex_style(&ex_style);
+        }
+
         let animation_enabled = ANIMATION_ENABLED_PER_ANIMATION.lock();
         let transparent_enabled = animation_enabled.get(&TransparencyRenderDispatcher::PREFIX);
 
@@ -650,8 +658,7 @@ impl Window {
             let render_dispatcher = TransparencyRenderDispatcher::new(
                 self.hwnd,
                 true,
-                WindowsApi::get_transparent(self.hwnd)
-                    .unwrap_or(transparency_manager::TRANSPARENCY_ALPHA.load_consume()),
+                WindowsApi::get_transparent(self.hwnd).unwrap_or(default_alpha),
                 255,
                 style,
             );
