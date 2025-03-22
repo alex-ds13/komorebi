@@ -35,7 +35,6 @@ use uds_windows::UnixStream;
 
 use komorebi::focus_manager;
 use komorebi::load_configuration;
-use komorebi::process_movement::listen_for_movements;
 use komorebi::static_config::StaticConfig;
 use komorebi::window_manager::WindowManager;
 use komorebi::windows_api::WindowsApi;
@@ -312,7 +311,6 @@ fn main() -> Result<()> {
     // Start the runtime
     wm.run();
 
-    // transparency_manager::listen_for_notifications(wm.clone());
     // focus_manager::listen_for_notifications(wm.clone());
 
     // if CUSTOM_FFM.load(Ordering::SeqCst) {
