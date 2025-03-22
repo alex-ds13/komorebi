@@ -14,15 +14,6 @@ use crate::DEFAULT_CONTAINER_PADDING;
 use crossbeam_utils::atomic::AtomicConsume;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
-
-pub static STACKBAR_FOCUSED_TEXT_COLOUR: AtomicU32 = AtomicU32::new(16777215); // white
-pub static STACKBAR_UNFOCUSED_TEXT_COLOUR: AtomicU32 = AtomicU32::new(11776947); // gray text
-pub static STACKBAR_TAB_BACKGROUND_COLOUR: AtomicU32 = AtomicU32::new(3355443); // gray
-
-pub static STACKBAR_TEMPORARILY_DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// Responsible for handling all stackbar related logic and control
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -31,6 +22,7 @@ pub struct StackbarManager {
     pub stackbars_containers: HashMap<isize, Container>,
     pub stackbars_monitors: HashMap<String, usize>,
     pub globals: StackbarGlobals,
+    pub temporarely_disabled: bool,
 }
 
 /// Contains all the global data related to the stackbars
@@ -67,6 +59,8 @@ impl Default for StackbarGlobals {
 pub enum StackbarMessage {
     Update,
     ButtonDown(ButtonDownInfo),
+    Enable,
+    Disable,
 }
 
 impl From<StackbarMessage> for runtime::Control {
@@ -126,12 +120,20 @@ impl WindowManager {
     }
 }
 
-pub fn send_notification(message: StackbarMessage) {
-    runtime::send_message(message)
-}
-
 pub fn send_update() {
     runtime::send_message(StackbarMessage::Update)
+}
+
+pub fn button_down(info: ButtonDownInfo) {
+    runtime::send_message(StackbarMessage::ButtonDown(info))
+}
+
+pub fn disable() {
+    runtime::send_message(StackbarMessage::Disable)
+}
+
+pub fn enable() {
+    runtime::send_message(StackbarMessage::Enable)
 }
 
 impl StackbarManager {
@@ -145,6 +147,14 @@ impl StackbarManager {
                 self.update_stackbars(wm_info)?;
             }
             StackbarMessage::ButtonDown(info) => self.button_down(info),
+            StackbarMessage::Enable => {
+                self.temporarely_disabled = false;
+                self.update_stackbars(wm_info)?;
+            },
+            StackbarMessage::Disable => {
+                self.temporarely_disabled = true;
+                self.update_stackbars(wm_info)?;
+            },
         }
         Ok(())
     }
@@ -154,9 +164,7 @@ impl StackbarManager {
         let stackbars_monitors = &mut self.stackbars_monitors;
 
         // If stackbars are disabled
-        if matches!(self.globals.mode, StackbarMode::Never)
-            || STACKBAR_TEMPORARILY_DISABLED.load(Ordering::SeqCst)
-        {
+        if self.temporarely_disabled || matches!(self.globals.mode, StackbarMode::Never) {
             for (_, stackbar) in stackbars.iter() {
                 stackbar.destroy()?;
             }
