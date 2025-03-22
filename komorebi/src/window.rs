@@ -195,9 +195,7 @@ impl RenderDispatcher for MovementRenderDispatcher {
     }
 
     fn pre_render(&self) -> Result<()> {
-        stackbar_manager::STACKBAR_TEMPORARILY_DISABLED.store(true, Ordering::SeqCst);
-        stackbar_manager::send_update();
-
+        stackbar_manager::disable();
         Ok(())
     }
 
@@ -222,10 +220,7 @@ impl RenderDispatcher for MovementRenderDispatcher {
             if WindowsApi::foreground_window().unwrap_or_default() == self.hwnd {
                 focus_manager::send_notification(self.hwnd)
             }
-
-            stackbar_manager::STACKBAR_TEMPORARILY_DISABLED.store(false, Ordering::SeqCst);
-
-            stackbar_manager::send_update();
+            stackbar_manager::enable();
             transparency_manager::send_update();
         }
 
