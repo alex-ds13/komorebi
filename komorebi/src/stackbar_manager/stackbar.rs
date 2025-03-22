@@ -1,5 +1,5 @@
+use super::button_down;
 use super::StackbarGlobals;
-use super::StackbarMessage;
 use crate::container::Container;
 use crate::core::BorderStyle;
 use crate::core::Rect;
@@ -302,9 +302,7 @@ impl Stackbar {
                 WM_LBUTTONDOWN => {
                     let x = l_param.0 as i32 & 0xFFFF;
                     let y = (l_param.0 as i32 >> 16) & 0xFFFF;
-                    super::send_notification(StackbarMessage::ButtonDown(
-                        (hwnd.0 as isize, x, y).into(),
-                    ));
+                    button_down((hwnd.0 as isize, x, y).into());
 
                     LRESULT(0)
                 }
