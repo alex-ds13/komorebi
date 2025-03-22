@@ -3041,7 +3041,7 @@ fn show_window(hwnd: HWND, command: SHOW_WINDOW_CMD) {
 }
 
 fn remove_transparency(hwnd: isize) {
-    let _ = komorebi_client::Window::from(hwnd).opaque();
+    let _ = komorebi_client::Window::from(hwnd).opaque(255);
 }
 
 fn restore_window(hwnd: isize) {
