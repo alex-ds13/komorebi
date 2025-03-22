@@ -23,7 +23,6 @@ use komorebi::animation::ANIMATION_ENABLED_GLOBAL;
 use komorebi::animation::ANIMATION_ENABLED_PER_ANIMATION;
 use komorebi::animation::AnimationEngine;
 use komorebi::replace_env_in_path;
-use parking_lot::deadlock;
 use serde::Deserialize;
 use sysinfo::Process;
 use sysinfo::ProcessesToUpdate;
@@ -39,7 +38,6 @@ use komorebi::INITIAL_CONFIGURATION_LOADED;
 use komorebi::SESSION_ID;
 use komorebi::focus_manager;
 use komorebi::load_configuration;
-use komorebi::process_movement::listen_for_movements;
 use komorebi::state::State;
 use komorebi::static_config::StaticConfig;
 use komorebi::window_manager::WindowManager;
@@ -318,7 +316,6 @@ fn main() -> eyre::Result<()> {
     // Start the runtime
     wm.run();
 
-    // transparency_manager::listen_for_notifications(wm.clone());
     // focus_manager::listen_for_notifications(wm.clone());
 
     // if CUSTOM_FFM.load(Ordering::SeqCst) {
