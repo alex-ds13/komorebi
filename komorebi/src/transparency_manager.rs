@@ -1,7 +1,5 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::atomic::AtomicU8;
-
 use crate::monitor::Monitor;
 use crate::ring::Ring;
 use crate::runtime;
@@ -77,7 +75,7 @@ impl TransparencyManager {
         let known_hwnds = &mut self.known_transparent_hwnds;
         if !self.enabled {
             for hwnd in known_hwnds.iter() {
-                if let Err(error) = Window::from(*hwnd).opaque() {
+                if let Err(error) = Window::from(*hwnd).opaque(self.alpha) {
                     tracing::error!("failed to make window {hwnd} opaque: {error}")
                 }
             }
@@ -100,7 +98,7 @@ impl TransparencyManager {
                 // Workspaces with tiling disabled don't have transparent windows
                 if !ws.tile() || workspace_idx != focused_workspace_idx {
                     for window in ws.visible_windows().iter().flatten() {
-                        if let Err(error) = window.opaque() {
+                        if let Err(error) = window.opaque(self.alpha) {
                             let hwnd = window.hwnd;
                             tracing::error!("failed to make window {hwnd} opaque: {error}")
                         }
@@ -113,13 +111,13 @@ impl TransparencyManager {
                 if let Some(monocle) = ws.monocle_container() {
                     if let Some(window) = monocle.focused_window() {
                         if monitor_idx == focused_monitor_idx {
-                            if let Err(error) = window.opaque() {
+                            if let Err(error) = window.opaque(self.alpha) {
                                 let hwnd = window.hwnd;
                                 tracing::error!(
                                     "failed to make monocle window {hwnd} opaque: {error}"
                                 )
                             }
-                        } else if let Err(error) = window.transparent() {
+                        } else if let Err(error) = window.transparent(self.alpha) {
                             let hwnd = window.hwnd;
                             tracing::error!(
                                 "failed to make monocle window {hwnd} transparent: {error}"
@@ -134,7 +132,7 @@ impl TransparencyManager {
                 let is_maximized = WindowsApi::is_zoomed(foreground_hwnd);
 
                 if is_maximized {
-                    if let Err(error) = Window::from(foreground_hwnd).opaque() {
+                    if let Err(error) = Window::from(foreground_hwnd).opaque(self.alpha) {
                         let hwnd = foreground_hwnd;
                         tracing::error!("failed to make maximized window {hwnd} opaque: {error}")
                     }
@@ -178,7 +176,7 @@ impl TransparencyManager {
                                 }
 
                                 if should_make_transparent {
-                                    match window.transparent() {
+                                    match window.transparent(self.alpha) {
                                         Err(error) => {
                                             let hwnd = foreground_hwnd;
                                             tracing::error!("failed to make unfocused window {hwnd} transparent: {error}" )
@@ -201,8 +199,11 @@ impl TransparencyManager {
                             if window_idx != focused_window_idx {
                                 known_hwnds.push(window.hwnd);
                             } else {
-                                if let Err(error) =
-                                    c.focused_window().copied().unwrap_or_default().opaque()
+                                if let Err(error) = c
+                                    .focused_window()
+                                    .copied()
+                                    .unwrap_or_default()
+                                    .opaque(self.alpha)
                                 {
                                     let hwnd = foreground_hwnd;
                                     tracing::error!(
@@ -217,8 +218,6 @@ impl TransparencyManager {
         }
     }
 }
-
-pub static TRANSPARENCY_ALPHA: AtomicU8 = AtomicU8::new(200);
 
 pub fn send_update() {
     runtime::send_message(TransparencyMessage::Update);
