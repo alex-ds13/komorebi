@@ -467,32 +467,19 @@ impl BarWidget for Komorebi {
                                 proceed = false;
                             }
 
-                            if let Some(rect) = komorebi_notification_state.work_area_offset {
-                                if proceed {
-                                    match komorebi_client::send_query(&SocketMessage::Query(
-                                        komorebi_client::StateQuery::FocusedMonitorIndex,
-                                    )) {
-                                        Ok(idx) => {
-                                            if let Ok(monitor_idx) = idx.parse::<usize>() {
-                                                if komorebi_client::send_message(
-                                                    &SocketMessage::MonitorWorkAreaOffset(
-                                                        monitor_idx,
-                                                        rect,
-                                                    ),
-                                                )
-                                                .is_err()
-                                                {
-                                                    tracing::error!(
-                                                    "could not send message to komorebi: MonitorWorkAreaOffset"
-                                                );
-                                                }
-                                            }
-                                        }
-                                        Err(_) => {
-                                            tracing::error!(
-                                                "could not send message to komorebi: Query"
-                                            );
-                                        }
+                            if proceed {
+                                if let Some(rect) = komorebi_notification_state.work_area_offset {
+                                    if komorebi_client::send_message(
+                                        &SocketMessage::MonitorWorkAreaOffset(
+                                            komorebi_notification_state.monitor_index,
+                                            rect,
+                                        ),
+                                    )
+                                        .is_err()
+                                    {
+                                        tracing::error!(
+                                            "could not send message to komorebi: MonitorWorkAreaOffset"
+                                        );
                                     }
                                 }
                             }
@@ -713,7 +700,7 @@ impl KomorebiNotificationState {
         if monitor_index.is_none()
             || monitor_index.is_some_and(|idx| idx >= notification.state.monitors.elements().len())
         {
-            // The bar's monitor is diconnected, so the bar is disabled no need to check anything
+            // The bar's monitor is disconnected, so the bar is disabled no need to check anything
             // any further otherwise we'll get `OutOfBounds` panics.
             return;
         }
