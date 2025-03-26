@@ -1466,16 +1466,24 @@ impl WindowManager {
         Ok(())
     }
 
-    /// Updates the `globals` field of workspace with index `workspace_idx` on monitor index
-    /// `monitor_idx`
-    pub fn update_workspace_globals(&mut self, monitor_idx: usize, workspace_idx: usize) {
+    /// Gets the `WorkspaceGlobals` to be applied to the `monitor_idx`, `workspace_idx` pair
+    pub fn get_workspace_globals_for_monitor(
+        &self,
+        monitor_idx: usize,
+    ) -> Option<WorkspaceGlobals> {
         let offset = self.work_area_offset;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
+        let (border_width, border_offset) = if self.border_manager.enabled {
+            (
+                self.border_manager.border_width,
+                self.border_manager.border_offset,
+            )
+        } else {
+            (0, 0)
+        };
         let stackbar_mode = self.stackbar_manager.globals.mode;
         let stackbar_tab_height = self.stackbar_manager.globals.tab_height;
 
-        if let Some(monitor) = self.monitors_mut().get_mut(monitor_idx) {
+        if let Some(monitor) = self.monitors().get(monitor_idx) {
             let container_padding = monitor
                 .container_padding()
                 .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
@@ -1488,20 +1496,32 @@ impl WindowManager {
             let window_based_work_area_offset_limit = monitor.window_based_work_area_offset_limit();
             let floating_layer_behaviour = monitor.floating_layer_behaviour();
 
-            if let Some(workspace) = monitor.workspaces_mut().get_mut(workspace_idx) {
-                workspace.set_globals(WorkspaceGlobals {
-                    container_padding,
-                    workspace_padding,
-                    border_width,
-                    border_offset,
-                    work_area,
-                    work_area_offset,
-                    window_based_work_area_offset,
-                    window_based_work_area_offset_limit,
-                    floating_layer_behaviour,
-                    stackbar_mode,
-                    stackbar_tab_height,
-                });
+            return Some(WorkspaceGlobals {
+                container_padding,
+                workspace_padding,
+                border_width,
+                border_offset,
+                work_area,
+                work_area_offset,
+                window_based_work_area_offset,
+                window_based_work_area_offset_limit,
+                floating_layer_behaviour,
+                stackbar_mode,
+                stackbar_tab_height,
+            });
+        }
+
+        None
+    }
+
+    /// Updates the `globals` field of workspace with index `workspace_idx` on monitor index
+    /// `monitor_idx`
+    pub fn update_workspace_globals(&mut self, monitor_idx: usize, workspace_idx: usize) {
+        if let Some(globals) = self.get_workspace_globals_for_monitor(monitor_idx) {
+            if let Some(monitor) = self.monitors_mut().get_mut(monitor_idx) {
+                if let Some(workspace) = monitor.workspaces_mut().get_mut(workspace_idx) {
+                    workspace.globals = globals;
+                }
             }
         }
     }
@@ -1516,19 +1536,20 @@ impl WindowManager {
 
     /// Updates the `globals` for all workspaces
     pub fn update_all_workspace_globals(&mut self) {
-        let monitor_ws_idx_pairs = self
-            .monitors()
-            .iter()
-            .enumerate()
-            .flat_map(|(m_idx, m)| {
-                m.workspaces()
-                    .iter()
-                    .enumerate()
-                    .map(move |(ws_idx, _)| (m_idx, ws_idx))
-            })
+        let monitor_globals = (0..self.monitors().len())
+            .map(|idx| self.get_workspace_globals_for_monitor(idx))
             .collect::<Vec<_>>();
-        for (m_idx, ws_idx) in monitor_ws_idx_pairs {
-            self.update_workspace_globals(m_idx, ws_idx);
+
+        for (monitor, globals) in self
+            .monitors_mut()
+            .iter_mut()
+            .zip(monitor_globals)
+        {
+            if let Some(globals) = globals {
+                for workspace in monitor.workspaces_mut() {
+                    workspace.globals = globals;
+                }
+            }
         }
     }
 
@@ -1932,9 +1953,7 @@ impl WindowManager {
             second_monitor.load_focused_workspace(mouse_follows_focus)?;
         }
 
-        self.update_workspace_globals(first_idx, second_focused_workspace);
-        self.update_workspace_globals(second_idx, first_focused_workspace);
-
+        self.update_all_workspace_globals();
         self.update_focused_workspace_by_monitor_idx(second_idx)?;
         self.update_focused_workspace_by_monitor_idx(first_idx)
     }
@@ -2127,9 +2146,6 @@ impl WindowManager {
     pub fn move_workspace_to_monitor(&mut self, idx: usize) -> Result<()> {
         tracing::info!("moving workspace");
         let mouse_follows_focus = self.mouse_follows_focus;
-        let offset = self.work_area_offset;
-        let border_width = self.border_manager.border_width;
-        let border_offset = self.border_manager.border_offset;
         let workspace = self
             .remove_focused_workspace()
             .ok_or_else(|| anyhow!("there is no workspace"))?;
