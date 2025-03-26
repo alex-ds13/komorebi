@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::atomic::Ordering;
 
 use color_eyre::eyre::anyhow;
 use color_eyre::eyre::bail;
@@ -16,7 +15,6 @@ use crate::core::Rect;
 use crate::container::Container;
 use crate::ring::Ring;
 use crate::workspace::Workspace;
-use crate::workspace::WorkspaceGlobals;
 use crate::workspace::WorkspaceLayer;
 use crate::DefaultLayout;
 use crate::FloatingLayerBehaviour;
@@ -24,8 +22,6 @@ use crate::Layout;
 use crate::OperationDirection;
 use crate::Wallpaper;
 use crate::WindowsApi;
-use crate::DEFAULT_CONTAINER_PADDING;
-use crate::DEFAULT_WORKSPACE_PADDING;
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, Getters, CopyGetters, MutGetters, Setters, PartialEq,
