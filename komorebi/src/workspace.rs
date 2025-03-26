@@ -361,8 +361,6 @@ impl Workspace {
         let window_based_work_area_offset = self.globals().window_based_work_area_offset;
         let window_based_work_area_offset_limit =
             self.globals().window_based_work_area_offset_limit;
-        let border_width = self.globals().border_width;
-        let border_offset = self.globals().border_offset;
         let stackbar_mode = self.globals().stackbar_mode;
         let tab_height = self.globals().stackbar_tab_height;
 

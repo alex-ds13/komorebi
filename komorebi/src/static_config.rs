@@ -1206,9 +1206,12 @@ impl StaticConfig {
         workspace_matching_rules.clear();
         drop(workspace_matching_rules);
 
-        let offset = wm.work_area_offset;
+        let all_workspace_globals = (0..wm.monitors().len())
+            .map(|i| wm.get_workspace_globals_for_monitor(i))
+            .collect::<Vec<_>>();
         let mut to_cache = vec![];
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
+            let globals = all_workspace_globals[i];
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
                 let c_idx = display_index_preferences.iter().find_map(|(c_idx, id)| {
@@ -1256,7 +1259,7 @@ impl StaticConfig {
                 monitor.set_container_padding(monitor_config.container_padding);
                 monitor.set_workspace_padding(monitor_config.workspace_padding);
 
-                monitor.update_workspaces_globals(offset);
+                monitor.update_workspaces_globals(globals);
                 for (j, ws) in monitor.workspaces_mut().iter_mut().enumerate() {
                     if let Some(workspace_config) = monitor_config.workspaces.get(j) {
                         ws.load_static_config(workspace_config)?;
@@ -1345,8 +1348,6 @@ impl StaticConfig {
                     m.set_container_padding(monitor_config.container_padding);
                     m.set_workspace_padding(monitor_config.workspace_padding);
 
-                    m.update_workspaces_globals(offset);
-
                     for (j, ws) in m.workspaces_mut().iter_mut().enumerate() {
                         if let Some(workspace_config) = monitor_config.workspaces.get(j) {
                             ws.load_static_config(workspace_config)?;
@@ -1380,9 +1381,12 @@ impl StaticConfig {
         workspace_matching_rules.clear();
         drop(workspace_matching_rules);
 
-        let offset = wm.work_area_offset;
+        let all_workspace_globals = (0..wm.monitors().len())
+            .map(|i| wm.get_workspace_globals_for_monitor(i))
+            .collect::<Vec<_>>();
         let mut to_cache = vec![];
         for (i, monitor) in wm.monitors_mut().iter_mut().enumerate() {
+            let globals = all_workspace_globals[i];
             let preferred_config_idx = {
                 let display_index_preferences = DISPLAY_INDEX_PREFERENCES.read();
                 let c_idx = display_index_preferences.iter().find_map(|(c_idx, id)| {
@@ -1432,7 +1436,7 @@ impl StaticConfig {
                 monitor.set_container_padding(monitor_config.container_padding);
                 monitor.set_workspace_padding(monitor_config.workspace_padding);
 
-                monitor.update_workspaces_globals(offset);
+                monitor.update_workspaces_globals(globals);
 
                 for (j, ws) in monitor.workspaces_mut().iter_mut().enumerate() {
                     if let Some(workspace_config) = monitor_config.workspaces.get(j) {
@@ -1521,8 +1525,6 @@ impl StaticConfig {
                     );
                     m.set_container_padding(monitor_config.container_padding);
                     m.set_workspace_padding(monitor_config.workspace_padding);
-
-                    m.update_workspaces_globals(offset);
 
                     for (j, ws) in m.workspaces_mut().iter_mut().enumerate() {
                         if let Some(workspace_config) = monitor_config.workspaces.get(j) {

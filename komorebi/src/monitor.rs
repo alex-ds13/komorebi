@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::atomic::Ordering;
 
 use color_eyre::eyre::anyhow;
 use color_eyre::eyre::bail;
@@ -12,9 +11,6 @@ use getset::Setters;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::border_manager::BORDER_ENABLED;
-use crate::border_manager::BORDER_OFFSET;
-use crate::border_manager::BORDER_WIDTH;
 use crate::core::Rect;
 
 use crate::container::Container;
@@ -26,8 +22,6 @@ use crate::DefaultLayout;
 use crate::Layout;
 use crate::OperationDirection;
 use crate::WindowsApi;
-use crate::DEFAULT_CONTAINER_PADDING;
-use crate::DEFAULT_WORKSPACE_PADDING;
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, Getters, CopyGetters, MutGetters, Setters, PartialEq,
@@ -183,38 +177,23 @@ impl Monitor {
     }
 
     /// Updates the `globals` field of all workspaces
-    pub fn update_workspaces_globals(&mut self, offset: Option<Rect>) {
-        let container_padding = self
-            .container_padding()
-            .or(Some(DEFAULT_CONTAINER_PADDING.load(Ordering::SeqCst)));
-        let workspace_padding = self
-            .workspace_padding()
-            .or(Some(DEFAULT_WORKSPACE_PADDING.load(Ordering::SeqCst)));
-        let (border_width, border_offset) = {
-            let border_enabled = BORDER_ENABLED.load(Ordering::SeqCst);
-            if border_enabled {
-                let border_width = BORDER_WIDTH.load(Ordering::SeqCst);
-                let border_offset = BORDER_OFFSET.load(Ordering::SeqCst);
-                (border_width, border_offset)
-            } else {
-                (0, 0)
+    pub fn update_workspaces_globals(&mut self, globals: Option<WorkspaceGlobals>) {
+        if let Some(globals) = globals {
+            for workspace in self.workspaces_mut() {
+                workspace.globals = globals;
             }
-        };
-        let work_area = *self.work_area_size();
-        let work_area_offset = self.work_area_offset.or(offset);
-        let window_based_work_area_offset = self.window_based_work_area_offset();
-        let window_based_work_area_offset_limit = self.window_based_work_area_offset_limit();
+        }
+    }
 
-        for workspace in self.workspaces_mut() {
-            workspace.globals = WorkspaceGlobals {
-                container_padding,
-                workspace_padding,
-                border_width,
-                border_offset,
-                work_area,
-                work_area_offset,
-                window_based_work_area_offset,
-                window_based_work_area_offset_limit,
+    /// Updates the `globals` field for workspace with index `workspace_idx`
+    pub fn update_workspace_globals(
+        &mut self,
+        workspace_idx: usize,
+        globals: Option<WorkspaceGlobals>,
+    ) {
+        if let Some(globals) = globals {
+            if let Some(workspace) = self.workspaces_mut().get_mut(workspace_idx) {
+                workspace.globals = globals;
             }
         }
     }
