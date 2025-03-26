@@ -354,6 +354,8 @@ impl Workspace {
             .workspace_padding()
             .or(self.globals().workspace_padding)
             .unwrap_or_default();
+        let border_width = self.globals().border_width;
+        let border_offset = self.globals().border_offset;
         let work_area = self.globals().work_area;
         let work_area_offset = self.globals().work_area_offset;
         let window_based_work_area_offset = self.globals().window_based_work_area_offset;
@@ -430,10 +432,8 @@ impl Workspace {
             if let Some(container) = self.monocle_container_mut() {
                 if let Some(window) = container.focused_window_mut() {
                     adjusted_work_area.add_padding(container_padding);
-                    {
-                        adjusted_work_area.add_padding(border_offset);
-                        adjusted_work_area.add_padding(border_width);
-                    }
+                    adjusted_work_area.add_padding(border_offset);
+                    adjusted_work_area.add_padding(border_width);
                     window.set_position(&adjusted_work_area, true)?;
                 };
             } else if let Some(window) = self.maximized_window_mut() {
@@ -461,10 +461,8 @@ impl Workspace {
                     let window_count = container.windows().len();
 
                     if let Some(layout) = layouts.get_mut(i) {
-                        {
-                            layout.add_padding(border_offset);
-                            layout.add_padding(border_width);
-                        }
+                        layout.add_padding(border_offset);
+                        layout.add_padding(border_width);
 
                         if stackbar_manager::should_have_stackbar(&stackbar_mode, window_count) {
                             let total_height = tab_height + container_padding;

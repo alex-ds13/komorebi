@@ -844,10 +844,9 @@ impl WindowManager {
         self.border_manager.border_offset = config
             .border_offset
             .unwrap_or(border_manager::BorderManager::default().border_offset);
-
-        if let Some(enabled) = &config.border {
-            self.border_manager.enabled = *enabled;
-        }
+        self.border_manager.enabled = config
+            .border
+            .unwrap_or(border_manager::BorderManager::default().enabled);
 
         if let Some(colours) = &config.border_colours {
             if let Some(single) = colours.single {
