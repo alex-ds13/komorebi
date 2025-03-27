@@ -196,21 +196,36 @@ impl From<WindowWithBorderAction> for Control {
     }
 }
 
-pub struct Runtime<'a> {
+pub type ProviderFn<I>
+where
+    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+= Box<dyn Fn() -> I>;
+
+pub struct Runtime<'a, I>
+where
+    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+{
     stop_runtime: bool,
     events_rx: &'a Receiver<Message>,
     commands_rx: &'a Receiver<Message>,
     control_rx: &'a Receiver<Message>,
     ctrlc_receiver: Receiver<()>,
+    display_provider: ProviderFn<I>,
 }
 
-impl Default for Runtime<'_> {
+impl<I> Default for Runtime<'_, I>
+where
+    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Runtime<'_> {
+impl<I> Runtime<'_, I>
+where
+    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+{
     pub fn new() -> Self {
         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
         let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
@@ -225,12 +240,41 @@ impl Runtime<'_> {
             tracing::error!("failed to set ctrl-c handler: {error}");
         }
 
+        let display_provider = Box::new(|| win32_display_data::connected_displays_all()) as ProviderFn<I>;
+
         Runtime {
             stop_runtime: false,
             events_rx,
             commands_rx,
             control_rx,
             ctrlc_receiver,
+            display_provider,
+        }
+    }
+
+    pub fn new_with_provider(display_provider: impl Into<ProviderFn<I>>) -> Self {
+        let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+        let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+        let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+
+        let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
+        if let Err(error) = ctrlc::set_handler(move || {
+            ctrlc_sender
+                .send(())
+                .expect("could not send signal on ctrl-c channel");
+        }) {
+            tracing::error!("failed to set ctrl-c handler: {error}");
+        }
+
+        let display_provider = display_provider.into();
+
+        Runtime {
+            stop_runtime: false,
+            events_rx,
+            commands_rx,
+            control_rx,
+            ctrlc_receiver,
+            display_provider,
         }
     }
 
@@ -576,8 +620,70 @@ impl WindowManager {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    use crossbeam_channel::bounded;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    // Creating a Window Manager Instance
+    pub struct TestContext {
+        socket_path: Option<PathBuf>,
+    }
+
+    impl Drop for TestContext {
+        fn drop(&mut self) {
+            if let Some(socket_path) = &self.socket_path {
+                // Clean up the socket file
+                if let Err(e) = std::fs::remove_file(socket_path) {
+                    tracing::warn!("Failed to remove socket file: {}", e);
+                }
+            }
+        }
+    }
+
+    pub fn no_display_provider(
+    ) -> impl Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>> {
+        Vec::new().into_iter()
+    }
+
+    pub fn setup_window_manager<'a, F, I>(
+        display_provider: F,
+    ) -> (WindowManager, TestContext, Runtime<'a>)
+    where
+        F: Fn() -> I + Copy,
+        I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+    {
+        let (_sender, receiver) = bounded(1);
+
+        // Temporary socket path for testing
+        let socket_name = format!("komorebi-test-{}.sock", Uuid::new_v4());
+        let socket_path = PathBuf::from(socket_name);
+
+        // Create a new WindowManager instance
+        let mut wm = match WindowManager::new(receiver, Some(socket_path.clone())) {
+            Ok(manager) => manager,
+            Err(e) => {
+                panic!("Failed to create WindowManager: {}", e);
+            }
+        };
+
+        // Load monitor information
+        if let Err(error) = WindowsApi::load_monitor_information(&mut wm, display_provider) {
+            panic!("Failed to load monitor information from provide: {}", error);
+        }
+
+        // Create runtime for tests which will initialize it to be able to receive messages
+        let runtime = Runtime::new();
+
+        (
+            wm,
+            TestContext {
+                socket_path: Some(socket_path),
+            },
+            runtime,
+        )
+    }
 
     impl WindowManager {
         pub fn test_run<'a>(&'a mut self, mut runtime: Runtime<'a>) -> Runtime<'a> {

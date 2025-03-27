@@ -255,13 +255,15 @@ impl WindowsApi {
             .collect::<Vec<_>>())
     }
 
-    pub fn load_monitor_information(wm: &mut WindowManager) -> Result<()> {
+    pub fn load_monitor_information<F, I>(wm: &mut WindowManager, display_provider: F) -> Result<()>
+    where
+        F: Fn() -> I + Copy,
+        I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+    {
         let monitors = &mut wm.monitors;
         let monitor_usr_idx_map = &mut wm.monitor_usr_idx_map;
 
-        let all_displays = win32_display_data::connected_displays_all()
-            .flatten()
-            .collect::<Vec<_>>();
+        let all_displays = display_provider().flatten().collect::<Vec<_>>();
 
         let mut serial_id_map = HashMap::new();
 

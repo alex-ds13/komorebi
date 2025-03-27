@@ -456,7 +456,7 @@ impl WindowManager {
     #[tracing::instrument(skip(self))]
     pub fn init(&mut self) -> Result<()> {
         tracing::info!("initialising");
-        WindowsApi::load_monitor_information(self)?;
+        WindowsApi::load_monitor_information(self, win32_display_data::connected_displays_all)?;
         WindowsApi::load_workspace_information(
             &mut self.monitors,
             &self.known_hwnds,

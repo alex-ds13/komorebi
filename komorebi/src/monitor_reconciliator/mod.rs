@@ -524,7 +524,7 @@ impl WindowManager {
 
                 // Check for and add any new monitors that may have been plugged in
                 // Monitor and display index preferences get applied in this function
-                WindowsApi::load_monitor_information(self)?;
+                WindowsApi::load_monitor_information(self, display_provider)?;
 
                 let post_addition_monitor_count = self.monitors().len();
 
@@ -775,12 +775,8 @@ impl WindowManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::window_manager_event::WindowManagerEvent;
-    use crossbeam_channel::bounded;
-    use crossbeam_channel::Receiver;
-    use crossbeam_channel::Sender;
-    use std::path::PathBuf;
-    use uuid::Uuid;
+    use runtime::tests::no_display_provider;
+    use runtime::tests::setup_window_manager;
     use windows::Win32::Devices::Display::DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY;
     // NOTE: Using RECT instead of RECT since I get a mismatched type error. Can be updated if
     // needed.
@@ -816,54 +812,10 @@ mod tests {
         }
     }
 
-    // Creating a Window Manager Instance
-    struct TestContext {
-        socket_path: Option<PathBuf>,
-    }
-
-    impl Drop for TestContext {
-        fn drop(&mut self) {
-            if let Some(socket_path) = &self.socket_path {
-                // Clean up the socket file
-                if let Err(e) = std::fs::remove_file(socket_path) {
-                    tracing::warn!("Failed to remove socket file: {}", e);
-                }
-            }
-        }
-    }
-
-    fn setup_window_manager<'a>() -> (WindowManager, TestContext, runtime::Runtime<'a>) {
-        let (_sender, receiver): (Sender<WindowManagerEvent>, Receiver<WindowManagerEvent>) =
-            bounded(1);
-
-        // Temporary socket path for testing
-        let socket_name = format!("komorebi-test-{}.sock", Uuid::new_v4());
-        let socket_path = PathBuf::from(socket_name);
-
-        // Create a new WindowManager instance
-        let wm = match WindowManager::new(receiver, Some(socket_path.clone())) {
-            Ok(manager) => manager,
-            Err(e) => {
-                panic!("Failed to create WindowManager: {}", e);
-            }
-        };
-
-        // Create runtime for tests
-        let runtime = runtime::Runtime::new();
-
-        (
-            wm,
-            TestContext {
-                socket_path: Some(socket_path),
-            },
-            runtime,
-        )
-    }
-
     #[test]
     fn test_send_notification() {
         // Create a WindowManager instance for testing
-        let (_wm, _test_context, mut runtime) = setup_window_manager();
+        let (_wm, _test_context, mut runtime) = setup_window_manager(no_display_provider);
 
         // Test sending a notification
         send_notification(MonitorNotification::ResolutionScalingChanged);
@@ -886,7 +838,7 @@ mod tests {
     #[test]
     fn test_channel_bounded_capacity() {
         // Create a WindowManager instance for testing
-        let (_wm, _test_context, mut runtime) = setup_window_manager();
+        let (_wm, _test_context, mut runtime) = setup_window_manager(no_display_provider);
 
         // Fill the channel to its capacity (50 messages)
         for _ in 0..50 {
@@ -925,7 +877,7 @@ mod tests {
     #[test]
     fn test_insert_in_monitor_cache() {
         // Create a WindowManager instance for testing
-        let (mut wm, _test_context, _runtime) = setup_window_manager();
+        let (mut wm, _test_context, _runtime) = setup_window_manager(no_display_provider);
 
         let m = monitor::new(
             0,
@@ -951,7 +903,7 @@ mod tests {
     #[test]
     fn test_insert_two_monitors_cache() {
         // Create a WindowManager instance for testing
-        let (mut wm, _test_context, _runtime) = setup_window_manager();
+        let (mut wm, _test_context, _runtime) = setup_window_manager(no_display_provider);
 
         let m1 = monitor::new(
             0,
@@ -1063,5 +1015,122 @@ mod tests {
         } else {
             panic!("No monitors found");
         }
+    }
+
+    #[test]
+    fn test_monitor_disconnect_to_cache() {
+        // Define mock display data
+        let mock_monitor = MockDevice {
+            hmonitor: 1,
+            device_path: String::from(
+                "\\\\?\\DISPLAY#ABC123#4&123456&0&UID0#{saucepackets-4321-5678-2468-abc123456789}",
+            ),
+            device_name: String::from("\\\\.\\DISPLAY1"),
+            device_description: String::from("Display description"),
+            serial_number_id: Some(String::from("SaucePackets123")),
+            device_key: String::from("Mock Key"),
+            size: RECT {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            },
+            work_area_size: RECT {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            },
+            output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
+        };
+
+        let mock_monitor2 = MockDevice {
+            hmonitor: 2,
+            device_path: String::from(
+                "\\\\?\\DISPLAY#ABC123#4&123456&0&UID1#{saucepackets2-4321-5678-2468-abc123456789}",
+            ),
+            device_name: String::from("\\\\.\\DISPLAY2"),
+            device_description: String::from("Display description2"),
+            serial_number_id: Some(String::from("SaucePackets1234")),
+            device_key: String::from("Mock Key2"),
+            size: RECT {
+                left: 1920,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            },
+            work_area_size: RECT {
+                left: 1920,
+                top: 0,
+                right: 1920,
+                bottom: 1080,
+            },
+            output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
+        };
+
+        // Create a closure to simulate the display provider
+        let display_provider = || {
+            vec![
+                Ok::<win32_display_data::Device, win32_display_data::Error>(
+                    win32_display_data::Device::from(mock_monitor.clone()),
+                ),
+                Ok::<win32_display_data::Device, win32_display_data::Error>(
+                    win32_display_data::Device::from(mock_monitor2.clone()),
+                ),
+            ]
+            .into_iter()
+        };
+
+        // Create a WindowManager instance for testing
+        let (mut wm, _test_context, runtime) = setup_window_manager(display_provider);
+
+        // Should contain the mock monitors
+        assert_eq!(wm.monitors().len(), 2, "Expected two monitors");
+
+        // hmonitor
+        assert_eq!(wm.monitors()[0].id(), 1);
+
+        // device name
+        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY1"));
+
+        // Device
+        assert_eq!(wm.monitors()[0].device(), &String::from("ABC123"));
+
+        // Device ID
+        assert_eq!(
+            wm.monitors()[0].device_id(),
+            &String::from("ABC123-4&123456&0&UID0")
+        );
+
+        // Check monitor serial number id
+        assert_eq!(
+            wm.monitors()[0].serial_number_id,
+            Some(String::from("SaucePackets123")),
+        );
+
+        // hmonitor
+        assert_eq!(wm.monitors()[0].id(), 2);
+
+        // device name
+        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY2"));
+
+        // Device
+        assert_eq!(wm.monitors()[0].device(), &String::from("ABC123"));
+
+        // Device ID
+        assert_eq!(
+            wm.monitors()[0].device_id(),
+            &String::from("ABC123-4&123456&0&UID1")
+        );
+
+        // Check monitor serial number id
+        assert_eq!(
+            wm.monitors()[0].serial_number_id,
+            Some(String::from("SaucePackets1234")),
+        );
+
+
+        send_notification(MonitorNotification::DisplayConnectionChange);
+
     }
 }

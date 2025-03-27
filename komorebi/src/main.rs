@@ -217,7 +217,7 @@ fn main() -> Result<()> {
     };
 
     tracing::info!("loading monitor information");
-    WindowsApi::load_monitor_information(&mut wm)?;
+    WindowsApi::load_monitor_information(&mut wm, win32_display_data::connected_displays_all)?;
 
     if let Some(config) = &static_config {
         StaticConfig::postload(config, &mut wm)?;
