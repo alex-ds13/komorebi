@@ -1894,8 +1894,8 @@ impl WindowManager {
                     self.border_manager.kind_colours.unfocused_colour = Rgb::new(r, g, b).into();
                 }
                 WindowKind::UnfocusedLocked => {
-                    border_manager::UNFOCUSED_LOCKED
-                        .store(Rgb::new(r, g, b).into(), Ordering::SeqCst);
+                    self.border_manager.kind_colours.unfocused_locked_colour =
+                        Rgb::new(r, g, b).into();
                 }
                 WindowKind::Floating => {
                     self.border_manager.kind_colours.floating_colour = Rgb::new(r, g, b).into();

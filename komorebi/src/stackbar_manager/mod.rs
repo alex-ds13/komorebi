@@ -150,11 +150,11 @@ impl StackbarManager {
             StackbarMessage::Enable => {
                 self.temporarely_disabled = false;
                 self.update_stackbars(wm_info)?;
-            },
+            }
             StackbarMessage::Disable => {
                 self.temporarely_disabled = true;
                 self.update_stackbars(wm_info)?;
-            },
+            }
         }
         Ok(())
     }

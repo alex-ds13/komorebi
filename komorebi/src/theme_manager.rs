@@ -119,7 +119,7 @@ impl WindowManager {
 
                 let unfocused_locked_border = unfocused_locked_border
                     .unwrap_or(komorebi_themes::Base16Value::Base08)
-                    .color32(*name);
+                    .color32(name);
 
                 let floating_border = floating_border
                     .unwrap_or(komorebi_themes::Base16Value::Base09)
