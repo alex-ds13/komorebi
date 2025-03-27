@@ -1540,11 +1540,7 @@ impl WindowManager {
             .map(|idx| self.get_workspace_globals_for_monitor(idx))
             .collect::<Vec<_>>();
 
-        for (monitor, globals) in self
-            .monitors_mut()
-            .iter_mut()
-            .zip(monitor_globals)
-        {
+        for (monitor, globals) in self.monitors_mut().iter_mut().zip(monitor_globals) {
             if let Some(globals) = globals {
                 for workspace in monitor.workspaces_mut() {
                     workspace.globals = globals;

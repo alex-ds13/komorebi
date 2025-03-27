@@ -11,8 +11,8 @@ use getset::Setters;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::core::Rect;
 use crate::container::Container;
+use crate::core::Rect;
 use crate::ring::Ring;
 use crate::workspace::Workspace;
 use crate::workspace::WorkspaceLayer;

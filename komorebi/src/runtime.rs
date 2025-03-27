@@ -204,6 +204,12 @@ pub struct Runtime<'a> {
     ctrlc_receiver: Receiver<()>,
 }
 
+impl Default for Runtime<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Runtime<'_> {
     pub fn new() -> Self {
         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
