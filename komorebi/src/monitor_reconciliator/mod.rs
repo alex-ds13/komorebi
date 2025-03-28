@@ -8,6 +8,7 @@ use crate::monitor::Monitor;
 use crate::monitor_reconciliator::hidden::Hidden;
 use crate::notify_subscribers;
 use crate::runtime;
+use crate::windows_api::WinApi;
 use crate::Notification;
 use crate::NotificationEvent;
 use crate::State;
@@ -840,6 +841,8 @@ mod tests {
         // Create a WindowManager instance for testing
         let (_wm, _test_context, mut runtime) = setup_window_manager(no_display_provider);
 
+        assert!(runtime.get_messages().is_empty());
+
         // Fill the channel to its capacity (50 messages)
         for _ in 0..50 {
             send_notification(MonitorNotification::WorkAreaChanged);
@@ -854,8 +857,9 @@ mod tests {
         // Check that there are 50 message
         assert_eq!(messages.len(), 50);
 
-        // Verify the channel contains only the first 20 messages
-        for message in messages {
+        // Verify the channel contains only the first 50 messages
+        for (i, message) in messages.into_iter().enumerate() {
+            println!("message {}: {}", i, &message);
             assert!(
                 matches!(
                     message,
@@ -863,7 +867,8 @@ mod tests {
                         MonitorNotification::WorkAreaChanged
                     ))
                 ),
-                "Unexpected notification in the channel"
+                "Unexpected notification in the channel: {}",
+                message
             );
         }
 
@@ -1020,69 +1025,89 @@ mod tests {
     #[test]
     fn test_monitor_disconnect_to_cache() {
         // Define mock display data
-        let mock_monitor = MockDevice {
-            hmonitor: 1,
-            device_path: String::from(
-                "\\\\?\\DISPLAY#ABC123#4&123456&0&UID0#{saucepackets-4321-5678-2468-abc123456789}",
-            ),
-            device_name: String::from("\\\\.\\DISPLAY1"),
-            device_description: String::from("Display description"),
-            serial_number_id: Some(String::from("SaucePackets123")),
-            device_key: String::from("Mock Key"),
-            size: RECT {
-                left: 0,
-                top: 0,
-                right: 1920,
-                bottom: 1080,
-            },
-            work_area_size: RECT {
-                left: 0,
-                top: 0,
-                right: 1920,
-                bottom: 1080,
-            },
-            output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
+        let mock_devices = {
+            let mock_monitor = MockDevice {
+                hmonitor: 1,
+                device_path: String::from(
+                    "\\\\?\\DISPLAY#ABC123#4&123456&0&UID0#{saucepackets-4321-5678-2468-abc123456789}",
+                ),
+                device_name: String::from("\\\\.\\DISPLAY1"),
+                device_description: String::from("Display description"),
+                serial_number_id: Some(String::from("SaucePackets123")),
+                device_key: String::from("Mock Key"),
+                size: RECT {
+                    left: 0,
+                    top: 0,
+                    right: 1920,
+                    bottom: 1080,
+                },
+                work_area_size: RECT {
+                    left: 0,
+                    top: 0,
+                    right: 1920,
+                    bottom: 1080,
+                },
+                output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
+            };
+
+            let mock_monitor2 = MockDevice {
+                hmonitor: 2,
+                device_path: String::from(
+                    "\\\\?\\DISPLAY#ABC123#4&123456&0&UID1#{saucepackets2-4321-5678-2468-abc123456789}",
+                ),
+                device_name: String::from("\\\\.\\DISPLAY2"),
+                device_description: String::from("Display description2"),
+                serial_number_id: Some(String::from("SaucePackets1234")),
+                device_key: String::from("Mock Key2"),
+                size: RECT {
+                    left: 1920,
+                    top: 0,
+                    right: 1920,
+                    bottom: 1080,
+                },
+                work_area_size: RECT {
+                    left: 1920,
+                    top: 0,
+                    right: 1920,
+                    bottom: 1080,
+                },
+                output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
+            };
+
+            vec![mock_monitor, mock_monitor2]
+        };
+        let mock_devices_2 =
+            std::sync::LazyLock::new(|| parking_lot::Mutex::new(mock_devices.clone()));
+
+        // Create a closure to simulate the display provider with 2 monitors
+        let display_provider_2 = || {
+            mock_devices_2
+                .lock()
+                .clone()
+                .into_iter()
+                .map(|d| Ok(win32_display_data::Device::from(d)))
+            // vec![
+            //     Ok::<win32_display_data::Device, win32_display_data::Error>(
+            //         win32_display_data::Device::from(devices[0]),
+            //     ),
+            //     Ok::<win32_display_data::Device, win32_display_data::Error>(
+            //         win32_display_data::Device::from(devices[1]),
+            //     ),
+            // ]
+            // .into_iter()
         };
 
-        let mock_monitor2 = MockDevice {
-            hmonitor: 2,
-            device_path: String::from(
-                "\\\\?\\DISPLAY#ABC123#4&123456&0&UID1#{saucepackets2-4321-5678-2468-abc123456789}",
-            ),
-            device_name: String::from("\\\\.\\DISPLAY2"),
-            device_description: String::from("Display description2"),
-            serial_number_id: Some(String::from("SaucePackets1234")),
-            device_key: String::from("Mock Key2"),
-            size: RECT {
-                left: 1920,
-                top: 0,
-                right: 1920,
-                bottom: 1080,
-            },
-            work_area_size: RECT {
-                left: 1920,
-                top: 0,
-                right: 1920,
-                bottom: 1080,
-            },
-            output_technology: Some(DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY(0)),
-        };
-
-        // Create a closure to simulate the display provider
-        let display_provider = || {
-            vec![
-                Ok::<win32_display_data::Device, win32_display_data::Error>(
-                    win32_display_data::Device::from(mock_monitor.clone()),
-                ),
-                Ok::<win32_display_data::Device, win32_display_data::Error>(
-                    win32_display_data::Device::from(mock_monitor2.clone()),
-                ),
-            ]
-            .into_iter()
-        };
+        // Create a closure to simulate the display provider with just 1 monitor
+        // fn display_provider_1(
+        // ) -> impl Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>
+        // {
+        //     get_mock_devices().into_iter().take(1).map(|d| {
+        //         Ok(win32_display_data::Device::from(d))
+        //     })
+        // }
 
         // Create a WindowManager instance for testing
-        let (mut wm, _test_context, runtime) = setup_window_manager(display_provider);
+        let (mut wm, _test_context, runtime) = setup_window_manager(display_provider_2);
 
         // Should contain the mock monitors
         assert_eq!(wm.monitors().len(), 2, "Expected two monitors");
@@ -1109,10 +1134,45 @@ mod tests {
         );
 
         // hmonitor
-        assert_eq!(wm.monitors()[0].id(), 2);
+        assert_eq!(wm.monitors()[1].id(), 2);
 
         // device name
-        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY2"));
+        assert_eq!(wm.monitors()[1].name(), &String::from("DISPLAY2"));
+
+        // Device
+        assert_eq!(wm.monitors()[1].device(), &String::from("ABC123"));
+
+        // Device ID
+        assert_eq!(
+            wm.monitors()[1].device_id(),
+            &String::from("ABC123-4&123456&0&UID1")
+        );
+
+        // Check monitor serial number id
+        assert_eq!(
+            wm.monitors()[1].serial_number_id,
+            Some(String::from("SaucePackets1234")),
+        );
+
+        // Change the display provider to now have only one monitor
+        {
+            let mut md = mock_devices_2.lock();
+            *md = mock_devices.clone().into_iter().take(1).collect();
+        }
+        // runtime.display_provider = display_provider_2;
+
+        send_notification(MonitorNotification::DisplayConnectionChange);
+
+        wm.test_run(runtime);
+
+        // Should contain only 1 mock monitor
+        assert_eq!(wm.monitors().len(), 1, "Expected two monitors");
+
+        // hmonitor
+        assert_eq!(wm.monitors()[0].id(), 1);
+
+        // device name
+        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY1"));
 
         // Device
         assert_eq!(wm.monitors()[0].device(), &String::from("ABC123"));
@@ -1120,17 +1180,13 @@ mod tests {
         // Device ID
         assert_eq!(
             wm.monitors()[0].device_id(),
-            &String::from("ABC123-4&123456&0&UID1")
+            &String::from("ABC123-4&123456&0&UID0")
         );
 
         // Check monitor serial number id
         assert_eq!(
             wm.monitors()[0].serial_number_id,
-            Some(String::from("SaucePackets1234")),
+            Some(String::from("SaucePackets123")),
         );
-
-
-        send_notification(MonitorNotification::DisplayConnectionChange);
-
     }
 }

@@ -5,13 +5,14 @@ use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::stackbar_manager;
 use crate::transparency_manager;
+use crate::windows_api::WinApi;
+use crate::windows_api::WindowsApi;
 use crate::winevent_listener;
 use crate::RuleDebug;
 use crate::SocketMessage;
 use crate::Window;
 use crate::WindowManager;
 use crate::WindowManagerEvent;
-use crate::WindowsApi;
 
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -24,41 +25,78 @@ use crossbeam_channel::Sender;
 use parking_lot::RwLock;
 use uds_windows::UnixStream;
 
+lazy_static::lazy_static! {
+    static ref EVENTS_CHANNEL: RwLock<Option<(Sender<Message>, Receiver<Message>)>> = RwLock::new(None);
+    static ref COMMANDS_CHANNEL: RwLock<Option<(Sender<Message>, Receiver<Message>)>> = RwLock::new(None);
+    static ref CONTROL_CHANNEL: RwLock<Option<(Sender<Message>, Receiver<Message>)>> = RwLock::new(None);
+}
 /// Handles windows events
-static EVENTS_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLock::new();
+// static EVENTS_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLock::new();
 
 /// Handles commands
-static COMMANDS_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLock::new();
+// static COMMANDS_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLock::new();
 
 /// Handles all the control actions requested by the managers to perform something on the `WindowManager`
-static CONTROL_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLock::new();
+// static CONTROL_CHANNEL: OnceLock<Sender<Message>, Receiver<Message>)> = OnceLock::new();
 
 static RUNTIME_STOPPED: LazyLock<Arc<RwLock<bool>>> =
     LazyLock::new(|| Arc::new(RwLock::new(false)));
 
-fn events_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
-    EVENTS_CHANNEL.get()
+// pub static WINDOWS_API: LazyLock<WindowsApi<Fn() -> Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>> + Copy, Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>>> = LazyLock::new(|| {
+//     if cfg!(test) {
+//         WindowsApi { display_provider: win32_display_data::connected_displays_all }
+//     } else {
+//         WindowsApi { display_provider: win32_display_data::connected_displays_all }
+//     }
+// });
+
+fn events_channel() -> Option<(Sender<Message>, Receiver<Message>)> {
+    EVENTS_CHANNEL.read().clone()
 }
 
-fn commands_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
-    COMMANDS_CHANNEL.get()
+fn commands_channel() -> Option<(Sender<Message>, Receiver<Message>)> {
+    COMMANDS_CHANNEL.read().clone()
 }
 
-fn control_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
-    CONTROL_CHANNEL.get()
+fn control_channel() -> Option<(Sender<Message>, Receiver<Message>)> {
+    CONTROL_CHANNEL.read().clone()
 }
 
-fn event_tx() -> Option<&'static Sender<Message>> {
+fn event_tx() -> Option<Sender<Message>> {
     events_channel().map(|(s, _)| s)
 }
 
-fn command_tx() -> Option<&'static Sender<Message>> {
+fn command_tx() -> Option<Sender<Message>> {
     commands_channel().map(|(s, _)| s)
 }
 
-fn control_tx() -> Option<&'static Sender<Message>> {
+fn control_tx() -> Option<Sender<Message>> {
     control_channel().map(|(s, _)| s)
 }
+
+// fn events_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
+//     EVENTS_CHANNEL.get()
+// }
+//
+// fn commands_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
+//     COMMANDS_CHANNEL.get()
+// }
+//
+// fn control_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
+//     CONTROL_CHANNEL.get()
+// }
+//
+// fn event_tx() -> Option<&'static Sender<Message>> {
+//     events_channel().map(|(s, _)| s)
+// }
+//
+// fn command_tx() -> Option<&'static Sender<Message>> {
+//     commands_channel().map(|(s, _)| s)
+// }
+//
+// fn control_tx() -> Option<&'static Sender<Message>> {
+//     control_channel().map(|(s, _)| s)
+// }
 
 pub fn send_message(message: impl Into<Message>) {
     if *RUNTIME_STOPPED.read() {
@@ -196,40 +234,120 @@ impl From<WindowWithBorderAction> for Control {
     }
 }
 
-pub type ProviderFn<I>
-where
-    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
-= Box<dyn Fn() -> I>;
+// pub trait DisplayProvider {
+//     type F: Fn() -> Self::I;
+//     type I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>;
+//
+//     fn display_provider(&self) -> Self::F;
+// }
 
-pub struct Runtime<'a, I>
+// impl DisplayProvider for Runtime<'_> {
+//     type F = Box<dyn Fn() -> Self::I>;
+//     type I =
+//         Box<dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>>;
+//
+//     fn display_provider(&self) -> Self::F {
+//         Box::new(|| -> Box<dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>> {
+//             Box::new(win32_display_data::connected_displays_all())
+//         })
+//     }
+// }
+
+// pub type ProviderFn<I>
+// where
+//     I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+// = Box<dyn Fn() -> I>;
+
+pub struct Runtime<F, I>
 where
+    F: Fn() -> I + Copy,
     I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
 {
     stop_runtime: bool,
-    events_rx: &'a Receiver<Message>,
-    commands_rx: &'a Receiver<Message>,
-    control_rx: &'a Receiver<Message>,
+    events_rx: Receiver<Message>,
+    commands_rx: Receiver<Message>,
+    control_rx: Receiver<Message>,
     ctrlc_receiver: Receiver<()>,
-    display_provider: ProviderFn<I>,
+    pub display_provider: F,
 }
 
-impl<I> Default for Runtime<'_, I>
-where
-    I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for Runtime<'_> {
+//     fn default() -> Self {
+//         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+//         let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+//         let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+//
+//         let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
+//         if let Err(error) = ctrlc::set_handler(move || {
+//             ctrlc_sender
+//                 .send(())
+//                 .expect("could not send signal on ctrl-c channel");
+//         }) {
+//             tracing::error!("failed to set ctrl-c handler: {error}");
+//         }
+//
+//         // let display_provider = Box::new(|| win32_display_data::connected_displays_all()) as ProviderFn<I>;
+//
+//         Runtime {
+//             stop_runtime: false,
+//             events_rx,
+//             commands_rx,
+//             control_rx,
+//             ctrlc_receiver,
+//             display_provider: Box::new(|| -> Box<dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>> {
+//                 Box::new(win32_display_data::connected_displays_all())
+//             }),
+//                 // as (ProviderFn<
+//                 //     dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+//                 // >))
+//                 // .into(),
+//         }
+//     }
+// }
 
-impl<I> Runtime<'_, I>
+impl<F, I> Runtime<F, I>
 where
+    F: Fn() -> I + Copy,
     I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
 {
-    pub fn new() -> Self {
-        let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
-        let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
-        let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+    //     pub fn new() -> Self {
+    //         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+    //         let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+    //         let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+    //
+    //         let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
+    //         if let Err(error) = ctrlc::set_handler(move || {
+    //             ctrlc_sender
+    //                 .send(())
+    //                 .expect("could not send signal on ctrl-c channel");
+    //         }) {
+    //             tracing::error!("failed to set ctrl-c handler: {error}");
+    //         }
+    //
+    //         // let display_provider = Box::new(|| win32_display_data::connected_displays_all()) as ProviderFn<I>;
+    //
+    //         Runtime {
+    //             stop_runtime: false,
+    //             events_rx,
+    //             commands_rx,
+    //             control_rx,
+    //             ctrlc_receiver,
+    //             display_provider: win32_display_data::connected_displays_all,
+    //         }
+    //     }
+    //
+    pub fn new(display_provider: F) -> Runtime<F, I> {
+        let (events_tx, events_rx) = crossbeam_channel::bounded(50);
+        let (commands_tx, commands_rx) = crossbeam_channel::bounded(50);
+        let (control_tx, control_rx) = crossbeam_channel::bounded(50);
+
+        *EVENTS_CHANNEL.write() = Some((events_tx, events_rx.clone()));
+        *COMMANDS_CHANNEL.write() = Some((commands_tx, commands_rx.clone()));
+        *CONTROL_CHANNEL.write() = Some((control_tx, control_rx.clone()));
+
+        // let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+        // let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
+        // let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
 
         let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
         if let Err(error) = ctrlc::set_handler(move || {
@@ -239,34 +357,6 @@ where
         }) {
             tracing::error!("failed to set ctrl-c handler: {error}");
         }
-
-        let display_provider = Box::new(|| win32_display_data::connected_displays_all()) as ProviderFn<I>;
-
-        Runtime {
-            stop_runtime: false,
-            events_rx,
-            commands_rx,
-            control_rx,
-            ctrlc_receiver,
-            display_provider,
-        }
-    }
-
-    pub fn new_with_provider(display_provider: impl Into<ProviderFn<I>>) -> Self {
-        let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
-        let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
-        let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
-
-        let (ctrlc_sender, ctrlc_receiver) = crossbeam_channel::bounded(1);
-        if let Err(error) = ctrlc::set_handler(move || {
-            ctrlc_sender
-                .send(())
-                .expect("could not send signal on ctrl-c channel");
-        }) {
-            tracing::error!("failed to set ctrl-c handler: {error}");
-        }
-
-        let display_provider = display_provider.into();
 
         Runtime {
             stop_runtime: false,
@@ -311,7 +401,7 @@ impl WindowManager {
     pub fn run(&mut self) {
         tracing::info!("Starting runtime...");
 
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::new(win32_display_data::connected_displays_all);
 
         self.start_listeners();
 
@@ -346,7 +436,12 @@ impl WindowManager {
                 break;
             }
 
-            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
+            self.handle_messages(
+                messages,
+                &mut runtime.stop_runtime,
+                &runtime.ctrlc_receiver,
+                runtime.display_provider,
+            );
 
             // Check for ctrl-c (we check this multiple times to reduce the wait for the user)
             if runtime.ctrlc_receiver.try_recv().is_ok() {
@@ -368,12 +463,16 @@ impl WindowManager {
     }
 
     /// Handle the received messages
-    fn handle_messages(
+    fn handle_messages<F, I>(
         &mut self,
         messages: Vec<Message>,
         stop_runtime: &mut bool,
         ctrlc_receiver: &Receiver<()>,
-    ) {
+        display_provider: F,
+    ) where
+        F: Fn() -> I + Copy,
+        I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+    {
         for message in messages {
             tracing::info!("processing message: {}", &message);
             match message {
@@ -400,10 +499,9 @@ impl WindowManager {
                         }
                     }
                     Control::Monitor(notification) => {
-                        if let Err(error) = self.handle_monitor_notification(
-                            notification,
-                            win32_display_data::connected_displays_all,
-                        ) {
+                        if let Err(error) =
+                            self.handle_monitor_notification(notification, display_provider)
+                        {
                             tracing::error!("Error from 'handle_monitor_notification': {}", error);
                         }
                     }
@@ -647,9 +745,9 @@ pub mod tests {
         Vec::new().into_iter()
     }
 
-    pub fn setup_window_manager<'a, F, I>(
+    pub fn setup_window_manager<F, I>(
         display_provider: F,
-    ) -> (WindowManager, TestContext, Runtime<'a>)
+    ) -> (WindowManager, TestContext, Runtime<F, I>)
     where
         F: Fn() -> I + Copy,
         I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
@@ -670,11 +768,17 @@ pub mod tests {
 
         // Load monitor information
         if let Err(error) = WindowsApi::load_monitor_information(&mut wm, display_provider) {
-            panic!("Failed to load monitor information from provide: {}", error);
+            panic!(
+                "Failed to load monitor information from provider: {}",
+                error
+            );
         }
 
         // Create runtime for tests which will initialize it to be able to receive messages
-        let runtime = Runtime::new();
+        let mut runtime = Runtime::new(display_provider);
+
+        // Clear messages from previous tests
+        // let _ = runtime.get_messages();
 
         (
             wm,
@@ -686,12 +790,21 @@ pub mod tests {
     }
 
     impl WindowManager {
-        pub fn test_run<'a>(&'a mut self, mut runtime: Runtime<'a>) -> Runtime<'a> {
+        pub fn test_run<F, I>(&mut self, mut runtime: Runtime<F, I>) -> Runtime<F, I>
+        where
+            F: Fn() -> I + Copy,
+            I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+        {
             let messages = runtime.get_messages();
 
             assert!(!messages.is_empty(), "messages was empty");
 
-            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
+            self.handle_messages(
+                messages,
+                &mut runtime.stop_runtime,
+                &runtime.ctrlc_receiver,
+                runtime.display_provider,
+            );
 
             runtime
         }

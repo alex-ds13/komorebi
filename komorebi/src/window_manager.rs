@@ -63,6 +63,7 @@ use crate::static_config::StaticConfig;
 use crate::transparency_manager;
 use crate::window::Window;
 use crate::window_manager_event::WindowManagerEvent;
+use crate::windows_api::WinApi;
 use crate::windows_api::WindowsApi;
 use crate::winevent_listener;
 use crate::workspace::Workspace;

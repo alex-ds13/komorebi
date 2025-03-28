@@ -17,6 +17,7 @@ use crate::window::should_act;
 use crate::window::RuleDebug;
 use crate::window_manager::WindowManager;
 use crate::window_manager_event::WindowManagerEvent;
+use crate::windows_api::WinApi;
 use crate::windows_api::WindowsApi;
 use crate::winevent::WinEvent;
 use crate::workspace::WorkspaceLayer;

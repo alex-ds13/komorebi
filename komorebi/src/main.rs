@@ -33,6 +33,7 @@ use komorebi::focus_manager;
 use komorebi::load_configuration;
 use komorebi::static_config::StaticConfig;
 use komorebi::window_manager::WindowManager;
+use komorebi::windows_api::WinApi;
 use komorebi::windows_api::WindowsApi;
 use komorebi::winevent_listener;
 use komorebi::CUSTOM_FFM;
