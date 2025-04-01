@@ -39,6 +39,7 @@ use crate::styles::WindowStyle;
 use crate::transparency_manager;
 use crate::window_manager_event::WindowManagerEvent;
 use crate::windows_api;
+use crate::windows_api::WinApi;
 use crate::windows_api::WindowsApi;
 use color_eyre::eyre;
 use regex::Regex;

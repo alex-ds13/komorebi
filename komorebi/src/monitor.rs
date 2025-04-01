@@ -15,6 +15,7 @@ use crate::Layout;
 use crate::OperationDirection;
 use crate::Wallpaper;
 use crate::WindowsApi;
+use crate::windows_api::WinApi;
 use crate::container::Container;
 use crate::ring::Ring;
 use crate::workspace::Workspace;

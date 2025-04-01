@@ -7253,7 +7253,7 @@ dependencies = [
 [[package]]
 name = "win32-display-data"
 version = "0.1.0"
-source = "git+https://github.com/LGUG2Z/win32-display-data?rev=8c42d8db257d30fe95bc98c2e5cd8f75da861021#8c42d8db257d30fe95bc98c2e5cd8f75da861021"
+source = "git+https://github.com/alex-ds13/win32-display-data?branch=feat%2Fuse-vecs#1485db3438e67cfb8d66adabc6ad2d987b16d6af"
 dependencies = [
  "itertools 0.14.0",
  "serde",

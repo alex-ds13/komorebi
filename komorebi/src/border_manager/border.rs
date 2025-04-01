@@ -3,6 +3,7 @@ use super::WindowKindColours;
 use crate::WINDOWS_11;
 use crate::WindowKind;
 use crate::WindowsApi;
+use crate::windows_api::WinApi;
 use crate::border_manager::RenderTarget;
 use crate::core::BorderStyle;
 use crate::core::Rect;
