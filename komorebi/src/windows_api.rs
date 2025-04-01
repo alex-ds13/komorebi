@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::mem::size_of;
 use std::path::Path;
+use std::sync::Arc;
 use windows::core::Result as WindowsCrateResult;
 use windows::core::PCWSTR;
 use windows::core::PWSTR;
@@ -241,7 +242,722 @@ impl<T> ProcessWindowsCrateResult<T> for WindowsCrateResult<T> {
     }
 }
 
+pub struct WindowsApiInternal<'a> {
+    pub display_provider: Arc<dyn Fn() -> Vec<win32_display_data::Device> + Send + Sync + 'a>,
+}
+
+// impl
+//     WindowsApiInternal<
+//         fn() -> dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+//         dyn Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+//     >
+// {
+//     fn new_default() -> Self {
+//         Self {
+//             display_provider: win32_display_data::connected_displays_all,
+//         }
+//     }
+// }
+
+impl Default for WindowsApiInternal<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> WindowsApiInternal<'a> {
+    pub fn new() -> WindowsApiInternal<'a> {
+        let display_provider = Arc::new(win32_display_data::connected_displays_all);
+        WindowsApiInternal { display_provider }
+    }
+
+    pub fn new_with_provider(
+        display_provider: impl Fn() -> Vec<win32_display_data::Device> + Send + Sync + 'a,
+    ) -> WindowsApiInternal<'a> {
+        let display_provider = Arc::new(display_provider);
+        WindowsApiInternal { display_provider }
+    }
+}
+// pub static WindowsApi = WindowsApiInternal {
+//     display_provider: win32_display_data::connected_displays_all,
+// };
+
+// pub struct WindowsApi<F, I>
+// where
+//     F: Fn() -> I + Copy,
+//     I: Iterator<Item = Result<win32_display_data::Device, win32_display_data::Error>>,
+// {
+//     pub display_provider: F,
+// }
+
 pub struct WindowsApi;
+
+// impl WinApi for WindowsApi {}
+
+// pub trait WinApi: std::marker::Sync + std::marker::Send {
+pub trait WinApi {
+    // impl WindowsApi {
+    fn enum_display_monitors(
+        &self,
+        callback: MONITORENUMPROC,
+        callback_data_address: isize,
+    ) -> Result<()>;
+
+    fn valid_hmonitors(&self) -> Result<Vec<(String, isize)>>;
+
+    fn load_monitor_information(&self, wm: &mut WindowManager) -> Result<()>;
+
+    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> Result<()>;
+
+    fn load_workspace_information(
+        &self,
+        monitors: &mut Ring<Monitor>,
+        known_hwnds: &HashMap<isize, (usize, usize)>,
+        known_layered_hwnds: &[isize],
+    ) -> Result<()>;
+
+    fn allow_set_foreground_window(&self, process_id: u32) -> Result<()>;
+
+    fn monitor_from_window(&self, hwnd: isize) -> isize;
+
+    fn monitor_name_from_window(&self, hwnd: isize) -> Result<String>;
+
+    fn monitor_from_point(&self, point: POINT) -> isize;
+
+    /// position window resizes the target window to the given layout, adjusting
+    /// the layout to account for any window shadow borders (the window painted
+    /// region will match layout on completion).
+    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> Result<()>;
+
+    fn bring_window_to_top(&self, hwnd: isize) -> Result<()>;
+
+    /// Raise the window to the top of the Z order, but do not activate or focus
+    /// it. Use raise_and_focus_window to activate and focus a window.
+    fn raise_window(&self, hwnd: isize) -> Result<()>;
+
+    /// Lower the window to the bottom of the Z order, but do not activate or focus
+    /// it.
+    fn lower_window(&self, hwnd: isize) -> Result<()>;
+
+    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> Result<()>;
+
+    /// set_window_pos calls SetWindowPos without any accounting for Window decorations.
+    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> Result<()>;
+
+    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> Result<()>;
+
+    fn show_window(&self, hwnd: isize, command: SHOW_WINDOW_CMD);
+
+    fn minimize_window(&self, hwnd: isize);
+
+    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Result<()>;
+
+    fn close_window(&self, hwnd: isize) -> Result<()>;
+
+    fn hide_window(&self, hwnd: isize);
+
+    fn restore_window(&self, hwnd: isize);
+
+    fn unmaximize_window(&self, hwnd: isize);
+
+    fn maximize_window(&self, hwnd: isize);
+
+    fn foreground_window(&self) -> Result<isize>;
+
+    fn raise_and_focus_window(&self, hwnd: isize) -> Result<()>;
+
+    #[allow(dead_code)]
+    fn top_window(&self) -> Result<isize>;
+
+    fn desktop_window(&self) -> Result<isize>;
+
+    #[allow(dead_code)]
+    fn next_window(&self, hwnd: isize) -> Result<isize>;
+
+    #[allow(dead_code)]
+    fn top_visible_window(&self) -> Result<isize>;
+
+    fn window_rect(&self, hwnd: isize) -> Result<Rect>;
+
+    /// shadow_rect computes the offset of the shadow position of the window to
+    /// the window painted region. The four values in the returned Rect can be
+    /// added to a position rect to compute a size for set_window_pos that will
+    /// fill the target area, ignoring shadows.
+    fn shadow_rect(&self, hwnd: HWND) -> Result<Rect>;
+
+    fn round_rect(&self, hdc: HDC, rect: &Rect, border_radius: i32);
+    fn rectangle(&self, hdc: HDC, rect: &Rect);
+    fn set_cursor_pos(&self, x: i32, y: i32) -> Result<()>;
+
+    fn cursor_pos(&self) -> Result<POINT>;
+
+    fn window_from_point(&self, point: POINT) -> Result<isize>;
+
+    fn window_at_cursor_pos(&self) -> Result<isize>;
+
+    fn center_cursor_in_rect(&self, rect: &Rect) -> Result<()>;
+
+    fn window_thread_process_id(&self, hwnd: isize) -> (u32, u32);
+
+    fn current_process_id(&self) -> u32;
+
+    fn process_id_to_session_id(&self) -> Result<u32>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn set_window_long_ptr_w(
+        &self,
+        hwnd: HWND,
+        index: WINDOW_LONG_PTR_INDEX,
+        new_value: isize,
+    ) -> Result<()>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn set_window_long_ptr_w(
+        &self,
+        hwnd: HWND,
+        index: WINDOW_LONG_PTR_INDEX,
+        new_value: i32,
+    ) -> Result<()>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn gwl_style(&self, hwnd: isize) -> Result<isize>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn gwl_style(&self, hwnd: isize) -> Result<i32>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn gwl_ex_style(&self, hwnd: isize) -> Result<isize>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn gwl_ex_style(&self, hwnd: isize) -> Result<i32>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<isize>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<i32>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn update_style(&self, hwnd: isize, new_value: isize) -> Result<()>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn update_style(&self, hwnd: isize, new_value: i32) -> Result<()>;
+
+    #[cfg(target_pointer_width = "64")]
+    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> Result<()>;
+
+    #[cfg(target_pointer_width = "32")]
+    fn update_ex_style(&self, hwnd: isize, new_value: i32) -> Result<()>;
+
+    fn window_text_w(&self, hwnd: isize) -> Result<String>;
+
+    fn open_process(
+        &self,
+        access_rights: PROCESS_ACCESS_RIGHTS,
+        inherit_handle: bool,
+        process_id: u32,
+    ) -> Result<HANDLE>;
+
+    fn close_process(&self, handle: HANDLE) -> Result<()>;
+
+    fn process_handle(&self, process_id: u32) -> Result<HANDLE>;
+
+    fn exe_path(&self, handle: HANDLE) -> Result<String>;
+
+    fn exe(&self, handle: HANDLE) -> Result<String>;
+
+    fn real_window_class_w(&self, hwnd: isize) -> Result<String>;
+
+    fn dwm_get_window_attribute<T>(
+        &self,
+        hwnd: isize,
+        attribute: DWMWINDOWATTRIBUTE,
+        value: &mut T,
+    ) -> Result<()>;
+
+    fn is_window_cloaked(&self, hwnd: isize) -> Result<bool>;
+
+    fn is_window(&self, hwnd: isize) -> bool;
+
+    fn is_window_visible(&self, hwnd: isize) -> bool;
+
+    fn is_iconic(&self, hwnd: isize) -> bool;
+
+    fn is_zoomed(&self, hwnd: isize) -> bool;
+
+    fn monitor_info_w(&self, hmonitor: HMONITOR) -> Result<MONITORINFOEXW>;
+
+    fn monitor(&self, hmonitor: isize) -> Result<Monitor>;
+
+    fn set_process_dpi_awareness_context(&self) -> Result<()>;
+
+    #[allow(dead_code)]
+    fn system_parameters_info_w(
+        &self,
+        action: SYSTEM_PARAMETERS_INFO_ACTION,
+        ui_param: u32,
+        pv_param: *mut c_void,
+        update_flags: SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    ) -> Result<()>;
+
+    // #[tracing::instrument]
+    fn foreground_lock_timeout(&self) -> Result<()>;
+
+    #[allow(dead_code)]
+    fn focus_follows_mouse(&self) -> Result<bool>;
+
+    #[allow(dead_code)]
+    fn enable_focus_follows_mouse(&self) -> Result<()>;
+
+    #[allow(dead_code)]
+    fn disable_focus_follows_mouse(&self) -> Result<()>;
+
+    fn module_handle_w(&self) -> Result<HMODULE>;
+
+    fn create_solid_brush(&self, colour: u32) -> HBRUSH;
+
+    fn register_class_w(&self, window_class: &WNDCLASSW) -> Result<u16>;
+
+    fn dpi_for_monitor(&self, hmonitor: isize) -> Result<f32>;
+
+    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> Result<bool>;
+
+    fn round_corners(&self, hwnd: isize) -> Result<()>;
+
+    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> Result<()>;
+
+    fn create_border_window(
+        &self,
+        name: PCWSTR,
+        instance: isize,
+        border: *mut Border,
+    ) -> Result<isize>;
+
+    fn set_transparent(&self, hwnd: isize, alpha: u8) -> Result<()>;
+
+    fn get_transparent(&self, hwnd: isize) -> Result<u8>;
+
+    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> Result<isize>;
+
+    fn register_power_setting_notification(
+        &self,
+        hwnd: isize,
+        guid: &windows_core::GUID,
+        flags: REGISTER_NOTIFICATION_FLAGS,
+    ) -> WindowsCrateResult<HPOWERNOTIFY>;
+
+    fn register_device_notification(
+        &self,
+        hwnd: isize,
+        filter: DEV_BROADCAST_DEVICEINTERFACE_W,
+        flags: REGISTER_NOTIFICATION_FLAGS,
+    ) -> WindowsCrateResult<HDEVNOTIFY>;
+
+    fn invalidate_rect(&self, hwnd: isize, rect: Option<&Rect>, erase: bool) -> bool;
+
+    fn alt_is_pressed(&self) -> bool;
+
+    fn lbutton_is_pressed(&self) -> bool;
+
+    fn left_click(&self) -> u32;
+
+    fn wts_register_session_notification(&self, hwnd: isize) -> Result<()>;
+}
+
+impl WinApi for WindowsApiInternal<'_> {
+    fn enum_display_monitors(
+        &self,
+        callback: MONITORENUMPROC,
+        callback_data_address: isize,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn valid_hmonitors(&self) -> Result<Vec<(String, isize)>> {
+        todo!()
+    }
+
+    fn load_monitor_information(&self, wm: &mut WindowManager) -> Result<()> {
+        todo!()
+    }
+
+    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn load_workspace_information(
+        &self,
+        monitors: &mut Ring<Monitor>,
+        known_hwnds: &HashMap<isize, (usize, usize)>,
+        known_layered_hwnds: &[isize],
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn allow_set_foreground_window(&self, process_id: u32) -> Result<()> {
+        todo!()
+    }
+
+    fn monitor_from_window(&self, hwnd: isize) -> isize {
+        todo!()
+    }
+
+    fn monitor_name_from_window(&self, hwnd: isize) -> Result<String> {
+        todo!()
+    }
+
+    fn monitor_from_point(&self, point: POINT) -> isize {
+        todo!()
+    }
+
+    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> Result<()> {
+        todo!()
+    }
+
+    fn bring_window_to_top(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn raise_window(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn lower_window(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> Result<()> {
+        todo!()
+    }
+
+    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> Result<()> {
+        todo!()
+    }
+
+    fn show_window(&self, hwnd: isize, command: SHOW_WINDOW_CMD) {
+        todo!()
+    }
+
+    fn minimize_window(&self, hwnd: isize) {
+        todo!()
+    }
+
+    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Result<()> {
+        todo!()
+    }
+
+    fn close_window(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn hide_window(&self, hwnd: isize) {
+        todo!()
+    }
+
+    fn restore_window(&self, hwnd: isize) {
+        todo!()
+    }
+
+    fn unmaximize_window(&self, hwnd: isize) {
+        todo!()
+    }
+
+    fn maximize_window(&self, hwnd: isize) {
+        todo!()
+    }
+
+    fn foreground_window(&self) -> Result<isize> {
+        todo!()
+    }
+
+    fn raise_and_focus_window(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn top_window(&self) -> Result<isize> {
+        todo!()
+    }
+
+    fn desktop_window(&self) -> Result<isize> {
+        todo!()
+    }
+
+    fn next_window(&self, hwnd: isize) -> Result<isize> {
+        todo!()
+    }
+
+    fn top_visible_window(&self) -> Result<isize> {
+        todo!()
+    }
+
+    fn window_rect(&self, hwnd: isize) -> Result<Rect> {
+        todo!()
+    }
+
+    fn shadow_rect(&self, hwnd: HWND) -> Result<Rect> {
+        todo!()
+    }
+
+    fn round_rect(&self, hdc: HDC, rect: &Rect, border_radius: i32) {
+        todo!()
+    }
+
+    fn rectangle(&self, hdc: HDC, rect: &Rect) {
+        todo!()
+    }
+
+    fn set_cursor_pos(&self, x: i32, y: i32) -> Result<()> {
+        todo!()
+    }
+
+    fn cursor_pos(&self) -> Result<POINT> {
+        todo!()
+    }
+
+    fn window_from_point(&self, point: POINT) -> Result<isize> {
+        todo!()
+    }
+
+    fn window_at_cursor_pos(&self) -> Result<isize> {
+        todo!()
+    }
+
+    fn center_cursor_in_rect(&self, rect: &Rect) -> Result<()> {
+        todo!()
+    }
+
+    fn window_thread_process_id(&self, hwnd: isize) -> (u32, u32) {
+        todo!()
+    }
+
+    fn current_process_id(&self) -> u32 {
+        todo!()
+    }
+
+    fn process_id_to_session_id(&self) -> Result<u32> {
+        todo!()
+    }
+
+    fn set_window_long_ptr_w(
+        &self,
+        hwnd: HWND,
+        index: WINDOW_LONG_PTR_INDEX,
+        new_value: isize,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn gwl_style(&self, hwnd: isize) -> Result<isize> {
+        todo!()
+    }
+
+    fn gwl_ex_style(&self, hwnd: isize) -> Result<isize> {
+        todo!()
+    }
+
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<isize> {
+        todo!()
+    }
+
+    fn update_style(&self, hwnd: isize, new_value: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn window_text_w(&self, hwnd: isize) -> Result<String> {
+        todo!()
+    }
+
+    fn open_process(
+        &self,
+        access_rights: PROCESS_ACCESS_RIGHTS,
+        inherit_handle: bool,
+        process_id: u32,
+    ) -> Result<HANDLE> {
+        todo!()
+    }
+
+    fn close_process(&self, handle: HANDLE) -> Result<()> {
+        todo!()
+    }
+
+    fn process_handle(&self, process_id: u32) -> Result<HANDLE> {
+        todo!()
+    }
+
+    fn exe_path(&self, handle: HANDLE) -> Result<String> {
+        todo!()
+    }
+
+    fn exe(&self, handle: HANDLE) -> Result<String> {
+        todo!()
+    }
+
+    fn real_window_class_w(&self, hwnd: isize) -> Result<String> {
+        todo!()
+    }
+
+    fn dwm_get_window_attribute<T>(
+        &self,
+        hwnd: isize,
+        attribute: DWMWINDOWATTRIBUTE,
+        value: &mut T,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn is_window_cloaked(&self, hwnd: isize) -> Result<bool> {
+        todo!()
+    }
+
+    fn is_window(&self, hwnd: isize) -> bool {
+        todo!()
+    }
+
+    fn is_window_visible(&self, hwnd: isize) -> bool {
+        todo!()
+    }
+
+    fn is_iconic(&self, hwnd: isize) -> bool {
+        todo!()
+    }
+
+    fn is_zoomed(&self, hwnd: isize) -> bool {
+        todo!()
+    }
+
+    fn monitor_info_w(&self, hmonitor: HMONITOR) -> Result<MONITORINFOEXW> {
+        todo!()
+    }
+
+    fn monitor(&self, hmonitor: isize) -> Result<Monitor> {
+        todo!()
+    }
+
+    fn set_process_dpi_awareness_context(&self) -> Result<()> {
+        todo!()
+    }
+
+    fn system_parameters_info_w(
+        &self,
+        action: SYSTEM_PARAMETERS_INFO_ACTION,
+        ui_param: u32,
+        pv_param: *mut c_void,
+        update_flags: SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn foreground_lock_timeout(&self) -> Result<()> {
+        todo!()
+    }
+
+    fn focus_follows_mouse(&self) -> Result<bool> {
+        todo!()
+    }
+
+    fn enable_focus_follows_mouse(&self) -> Result<()> {
+        todo!()
+    }
+
+    fn disable_focus_follows_mouse(&self) -> Result<()> {
+        todo!()
+    }
+
+    fn module_handle_w(&self) -> Result<HMODULE> {
+        todo!()
+    }
+
+    fn create_solid_brush(&self, colour: u32) -> HBRUSH {
+        todo!()
+    }
+
+    fn register_class_w(&self, window_class: &WNDCLASSW) -> Result<u16> {
+        todo!()
+    }
+
+    fn dpi_for_monitor(&self, hmonitor: isize) -> Result<f32> {
+        todo!()
+    }
+
+    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> Result<bool> {
+        todo!()
+    }
+
+    fn round_corners(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+
+    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> Result<()> {
+        todo!()
+    }
+
+    fn create_border_window(
+        &self,
+        name: PCWSTR,
+        instance: isize,
+        border: *mut Border,
+    ) -> Result<isize> {
+        todo!()
+    }
+
+    fn set_transparent(&self, hwnd: isize, alpha: u8) -> Result<()> {
+        todo!()
+    }
+
+    fn get_transparent(&self, hwnd: isize) -> Result<u8> {
+        todo!()
+    }
+
+    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> Result<isize> {
+        todo!()
+    }
+
+    fn register_power_setting_notification(
+        &self,
+        hwnd: isize,
+        guid: &windows_core::GUID,
+        flags: REGISTER_NOTIFICATION_FLAGS,
+    ) -> WindowsCrateResult<HPOWERNOTIFY> {
+        todo!()
+    }
+
+    fn register_device_notification(
+        &self,
+        hwnd: isize,
+        filter: DEV_BROADCAST_DEVICEINTERFACE_W,
+        flags: REGISTER_NOTIFICATION_FLAGS,
+    ) -> WindowsCrateResult<HDEVNOTIFY> {
+        todo!()
+    }
+
+    fn invalidate_rect(&self, hwnd: isize, rect: Option<&Rect>, erase: bool) -> bool {
+        todo!()
+    }
+
+    fn alt_is_pressed(&self) -> bool {
+        todo!()
+    }
+
+    fn lbutton_is_pressed(&self) -> bool {
+        todo!()
+    }
+
+    fn left_click(&self) -> u32 {
+        todo!()
+    }
+
+    fn wts_register_session_notification(&self, hwnd: isize) -> Result<()> {
+        todo!()
+    }
+}
 
 impl WindowsApi {
     pub fn enum_display_monitors(
@@ -255,7 +971,7 @@ impl WindowsApi {
 
     pub fn valid_hmonitors() -> Result<Vec<(String, isize)>> {
         Ok(win32_display_data::connected_displays_all()
-            .flatten()
+            .into_iter()
             .map(|d| {
                 let name = d.device_name.trim_start_matches(r"\\.\").to_string();
                 let name = name.split('\\').collect::<Vec<_>>()[0].to_string();
@@ -265,13 +981,14 @@ impl WindowsApi {
             .collect::<Vec<_>>())
     }
 
-    pub fn load_monitor_information(wm: &mut WindowManager) -> Result<()> {
+    pub fn load_monitor_information<F>(wm: &mut WindowManager, display_provider: F) -> Result<()>
+    where
+        F: Fn() -> Vec<win32_display_data::Device>,
+    {
         let monitors = &mut wm.monitors;
         let monitor_usr_idx_map = &mut wm.monitor_usr_idx_map;
 
-        let all_displays = win32_display_data::connected_displays_all()
-            .flatten()
-            .collect::<Vec<_>>();
+        let all_displays = display_provider();
 
         let mut serial_id_map = HashMap::new();
 
@@ -1060,7 +1777,7 @@ impl WindowsApi {
     }
 
     pub fn monitor_device_path(hmonitor: isize) -> Option<String> {
-        for display in win32_display_data::connected_displays_all().flatten() {
+        for display in win32_display_data::connected_displays_all() {
             if display.hmonitor == hmonitor {
                 return Some(display.device_path.clone());
             }
@@ -1070,7 +1787,7 @@ impl WindowsApi {
     }
 
     pub fn monitor(hmonitor: isize) -> Result<Monitor> {
-        for mut display in win32_display_data::connected_displays_all().flatten() {
+        for mut display in win32_display_data::connected_displays_all() {
             if display.hmonitor == hmonitor {
                 let path = display.device_path;
 

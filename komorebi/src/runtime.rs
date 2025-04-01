@@ -5,13 +5,14 @@ use crate::monitor_reconciliator;
 use crate::reaper;
 use crate::stackbar_manager;
 use crate::transparency_manager;
+use crate::windows_api::WinApi;
+use crate::windows_api::WindowsApi;
 use crate::winevent_listener;
 use crate::RuleDebug;
 use crate::SocketMessage;
 use crate::Window;
 use crate::WindowManager;
 use crate::WindowManagerEvent;
-use crate::WindowsApi;
 
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -35,6 +36,15 @@ static CONTROL_CHANNEL: OnceLock<(Sender<Message>, Receiver<Message>)> = OnceLoc
 
 static RUNTIME_STOPPED: LazyLock<Arc<RwLock<bool>>> =
     LazyLock::new(|| Arc::new(RwLock::new(false)));
+
+pub static WINDOWS_API: LazyLock<crate::windows_api::WindowsApiInternal<'_>> =
+    LazyLock::new(|| {
+        if cfg!(test) {
+            crate::windows_api::WindowsApiInternal::new_with_provider(win32_display_data::connected_displays_all)
+        } else {
+            crate::windows_api::WindowsApiInternal::new()
+        }
+    });
 
 fn events_channel() -> Option<&'static (Sender<Message>, Receiver<Message>)> {
     EVENTS_CHANNEL.get()
@@ -202,16 +212,13 @@ pub struct Runtime<'a> {
     commands_rx: &'a Receiver<Message>,
     control_rx: &'a Receiver<Message>,
     ctrlc_receiver: Receiver<()>,
+    display_provider: Box<dyn Fn() -> Vec<win32_display_data::Device> + 'a>,
 }
 
-impl Default for Runtime<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Runtime<'_> {
-    pub fn new() -> Self {
+impl<'a> Runtime<'a> {
+    pub fn new(
+        display_provider: impl Fn() -> Vec<win32_display_data::Device> + Clone + 'a,
+    ) -> Runtime<'a> {
         let (_, events_rx) = EVENTS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
         let (_, commands_rx) = COMMANDS_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
         let (_, control_rx) = CONTROL_CHANNEL.get_or_init(|| crossbeam_channel::bounded(50));
@@ -231,6 +238,7 @@ impl Runtime<'_> {
             commands_rx,
             control_rx,
             ctrlc_receiver,
+            display_provider: Box::new(display_provider),
         }
     }
 
@@ -267,7 +275,7 @@ impl WindowManager {
     pub fn run(&mut self) {
         tracing::info!("Starting runtime...");
 
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::new(win32_display_data::connected_displays_all);
 
         self.start_listeners();
 
@@ -302,7 +310,12 @@ impl WindowManager {
                 break;
             }
 
-            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
+            self.handle_messages(
+                messages,
+                &mut runtime.stop_runtime,
+                &runtime.ctrlc_receiver,
+                &runtime.display_provider,
+            );
 
             // Check for ctrl-c (we check this multiple times to reduce the wait for the user)
             if runtime.ctrlc_receiver.try_recv().is_ok() {
@@ -324,11 +337,12 @@ impl WindowManager {
     }
 
     /// Handle the received messages
-    fn handle_messages(
-        &mut self,
+    fn handle_messages<'a>(
+        &'a mut self,
         messages: Vec<Message>,
-        stop_runtime: &mut bool,
-        ctrlc_receiver: &Receiver<()>,
+        stop_runtime: &'a mut bool,
+        ctrlc_receiver: &'a Receiver<()>,
+        display_provider: impl Fn() -> Vec<win32_display_data::Device> + Clone + 'a,
     ) {
         for message in messages {
             tracing::info!("processing message: {}", &message);
@@ -356,10 +370,9 @@ impl WindowManager {
                         }
                     }
                     Control::Monitor(notification) => {
-                        if let Err(error) = self.handle_monitor_notification(
-                            notification,
-                            win32_display_data::connected_displays_all,
-                        ) {
+                        if let Err(error) =
+                            self.handle_monitor_notification(notification, &display_provider)
+                        {
                             tracing::error!("Error from 'handle_monitor_notification': {}", error);
                         }
                     }
@@ -577,16 +590,87 @@ impl WindowManager {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    use crossbeam_channel::bounded;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    // Creating a Window Manager Instance
+    pub struct TestContext {
+        socket_path: Option<PathBuf>,
+    }
+
+    impl Drop for TestContext {
+        fn drop(&mut self) {
+            if let Some(socket_path) = &self.socket_path {
+                // Clean up the socket file
+                if let Err(e) = std::fs::remove_file(socket_path) {
+                    tracing::warn!("Failed to remove socket file: {}", e);
+                }
+            }
+        }
+    }
+
+    pub fn no_display_provider() -> Vec<win32_display_data::Device> {
+        Vec::new()
+    }
+
+    pub fn setup_window_manager<'a>(
+        display_provider: impl Fn() -> Vec<win32_display_data::Device> + Clone + 'a,
+    ) -> (WindowManager, TestContext, Runtime<'a>) {
+        let (_sender, receiver) = bounded(1);
+
+        // Temporary socket path for testing
+        let socket_name = format!("komorebi-test-{}.sock", Uuid::new_v4());
+        let socket_path = PathBuf::from(socket_name);
+
+        // Create a new WindowManager instance
+        let mut wm = match WindowManager::new(receiver, Some(socket_path.clone())) {
+            Ok(manager) => manager,
+            Err(e) => {
+                panic!("Failed to create WindowManager: {}", e);
+            }
+        };
+
+        // Load monitor information
+        if let Err(error) = WindowsApi::load_monitor_information(&mut wm, display_provider.clone())
+        {
+            panic!(
+                "Failed to load monitor information from provider: {}",
+                error
+            );
+        }
+
+        // Create runtime for tests which will initialize it to be able to receive messages
+        let mut runtime = Runtime::new(display_provider);
+
+        // Clear messages from previous tests
+        let _ = runtime.get_messages();
+
+        (
+            wm,
+            TestContext {
+                socket_path: Some(socket_path),
+            },
+            runtime,
+        )
+    }
 
     impl WindowManager {
         pub fn test_run<'a>(&'a mut self, mut runtime: Runtime<'a>) -> Runtime<'a> {
-            let messages = runtime.get_messages();
+            let mut messages = runtime.get_messages();
+
+            self.filter_messages(&mut messages);
 
             assert!(!messages.is_empty(), "messages was empty");
 
-            self.handle_messages(messages, &mut runtime.stop_runtime, &runtime.ctrlc_receiver);
+            self.handle_messages(
+                messages,
+                &mut runtime.stop_runtime,
+                &runtime.ctrlc_receiver,
+                &runtime.display_provider,
+            );
 
             runtime
         }

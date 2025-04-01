@@ -63,6 +63,7 @@ use crate::static_config::StaticConfig;
 use crate::transparency_manager;
 use crate::window::Window;
 use crate::window_manager_event::WindowManagerEvent;
+use crate::windows_api::WinApi;
 use crate::windows_api::WindowsApi;
 use crate::winevent_listener;
 use crate::workspace::Workspace;
@@ -464,7 +465,7 @@ impl WindowManager {
     #[tracing::instrument(skip(self))]
     pub fn init(&mut self) -> Result<()> {
         tracing::info!("initialising");
-        WindowsApi::load_monitor_information(self)?;
+        WindowsApi::load_monitor_information(self, win32_display_data::connected_displays_all)?;
         WindowsApi::load_workspace_information(
             &mut self.monitors,
             &self.known_hwnds,

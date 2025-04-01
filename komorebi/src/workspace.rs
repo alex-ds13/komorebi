@@ -24,6 +24,7 @@ use crate::stackbar_manager;
 use crate::static_config::WorkspaceConfig;
 use crate::window::Window;
 use crate::window::WindowDetails;
+use crate::windows_api::WinApi;
 use crate::windows_api::WindowsApi;
 use crate::FloatingLayerBehaviour;
 use crate::KomorebiTheme;
