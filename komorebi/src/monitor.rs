@@ -15,13 +15,14 @@ use crate::core::Rect;
 
 use crate::container::Container;
 use crate::ring::Ring;
+use crate::windows_api::WinApi;
+use crate::windows_api::WindowsApi;
 use crate::workspace::Workspace;
 use crate::workspace::WorkspaceGlobals;
 use crate::workspace::WorkspaceLayer;
 use crate::DefaultLayout;
 use crate::Layout;
 use crate::OperationDirection;
-use crate::WindowsApi;
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, Getters, CopyGetters, MutGetters, Setters, PartialEq,
