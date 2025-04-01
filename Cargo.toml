@@ -37,7 +37,7 @@ parking_lot = "0.12"
 paste = "1"
 sysinfo = "0.34"
 uds_windows = "1"
-win32-display-data = { git = "https://github.com/LGUG2Z/win32-display-data", rev = "a28c6559a9de2f92c142a714947a9b081776caca" }
+win32-display-data = { git = "https://github.com/alex-ds13/win32-display-data", branch = "feat/use-vecs" }
 windows-numerics = { version = "0.2" }
 windows-implement = { version = "0.60" }
 windows-interface = { version = "0.59" }

@@ -57,6 +57,14 @@ copy:
 run target:
     cargo +stable run --bin {{ target }} --locked --no-default-features
 
+test:
+    cargo +stable test --no-default-features
+    cargo +stable test --no-default-features -- --ignored --test-threads=1
+
+test-target target:
+    cargo +stable test --package {{ target }} --no-default-features
+    cargo +stable test --package {{ target }} --no-default-features -- --ignored --test-threads=1
+
 warn target $RUST_LOG="warn":
     just run {{ target }}
 
