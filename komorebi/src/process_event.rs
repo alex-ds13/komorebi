@@ -115,7 +115,7 @@ impl WindowManager {
                     // TODO: when returning from another VD to the VD associated with komorebi
                     // if borders are enabled, they will not be drawn again until the user interacts
                     // with the workspace or forces a retile
-                    border_manager::destroy_all_borders()?;
+                    border_manager::destroy_all_borders();
 
                     // to be consumed by integrating gui applications like bars to know
                     // when to hide visual components which don't make sense when not on
