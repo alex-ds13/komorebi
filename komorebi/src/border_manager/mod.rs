@@ -8,6 +8,7 @@ use crate::monitor::Monitor;
 use crate::ring::Ring;
 use crate::runtime;
 use crate::windows_api;
+use crate::workspace::Workspace;
 use crate::workspace::WorkspaceLayer;
 use crate::WindowManager;
 use crate::WindowsApi;
@@ -241,6 +242,17 @@ impl BorderManager {
                                 .unwrap_or_default()
                                 .set_accent(self.window_kind_colour(window_kind))?;
 
+                            if ws.layer() == &WorkspaceLayer::Floating {
+                                for window in ws.floating_windows() {
+                                    let mut window_kind = WindowKind::Unfocused;
+
+                                    if foreground_window == window.hwnd {
+                                        window_kind = WindowKind::Floating;
+                                    }
+
+                                    window.set_accent(self.window_kind_colour(window_kind))?;
+                                }
+                            }
                             continue 'monitors;
                         }
 
@@ -459,9 +471,32 @@ impl BorderManager {
                             self.windows_borders.insert(focused_window_hwnd, id);
 
                             let border_hwnd = border.hwnd;
-                            // Remove all borders on this monitor except monocle
-                            self.remove_borders(monitor_idx, |_, b| border_hwnd != b.hwnd)?;
 
+                            if ws.layer() == &WorkspaceLayer::Floating {
+                                self.handle_floating_borders(
+                                    ws,
+                                    monitor_idx,
+                                    foreground_window,
+                                    style,
+                                    width,
+                                    offset,
+                                    kind_colours,
+                                    layer_changed,
+                                    forced_update,
+                                )?;
+
+                                // Remove all borders on this monitor except monocle and floating borders
+                                self.remove_borders(monitor_idx, |_, b| {
+                                    border_hwnd != b.hwnd
+                                        && !ws
+                                            .floating_windows()
+                                            .iter()
+                                            .any(|w| w.hwnd == b.tracking_hwnd)
+                                })?;
+                            } else {
+                                // Remove all borders on this monitor except monocle
+                                self.remove_borders(monitor_idx, |_, b| border_hwnd != b.hwnd)?;
+                            }
                             continue 'monitors;
                         }
 
@@ -602,68 +637,17 @@ impl BorderManager {
                         println!("########### LEN: {}", self.borders.len());
                         println!("########### LEN: {}", self.windows_borders.len());
 
-                        for window in ws.floating_windows() {
-                            let mut new_border = false;
-                            let id = window.hwnd.to_string();
-                            let border = match self.borders.entry(id.clone()) {
-                                Entry::Occupied(entry) => entry.into_mut(),
-                                Entry::Vacant(entry) => {
-                                    if let Ok(border) = Border::create(
-                                        &window.hwnd.to_string(),
-                                        window.hwnd,
-                                        monitor_idx,
-                                        style,
-                                        width,
-                                        offset,
-                                        kind_colours,
-                                    ) {
-                                        new_border = true;
-                                        entry.insert(border)
-                                    } else {
-                                        continue 'monitors;
-                                    }
-                                }
-                            };
-
-                            // Update border globals
-                            border.style = style;
-                            border.width = width;
-                            border.offset = offset;
-
-                            let last_focus_state = border.window_kind;
-
-                            let new_focus_state = if foreground_window == window.hwnd {
-                                WindowKind::Floating
-                            } else {
-                                WindowKind::Unfocused
-                            };
-
-                            border.window_kind = new_focus_state;
-
-                            // Update the border's monitor idx in case it changed
-                            border.monitor_idx = Some(monitor_idx);
-
-                            let rect = WindowsApi::window_rect(window.hwnd)?;
-                            border.window_rect = rect;
-
-                            let should_invalidate = new_border
-                                || (last_focus_state != new_focus_state)
-                                || layer_changed
-                                || forced_update;
-
-                            if should_invalidate {
-                                if forced_update && !new_border {
-                                    // Update the border brushes if there was a forced update
-                                    // and this is not a new border (new border's already have
-                                    // their brushes updated on creation)
-                                    border.update_brushes(kind_colours)?;
-                                }
-                                border.set_position(&rect, window.hwnd)?;
-                                border.invalidate();
-                            }
-
-                            self.windows_borders.insert(window.hwnd, id);
-                        }
+                        self.handle_floating_borders(
+                            ws,
+                            monitor_idx,
+                            foreground_window,
+                            style,
+                            width,
+                            offset,
+                            kind_colours,
+                            layer_changed,
+                            forced_update,
+                        )?;
                     }
                 }
             }
@@ -671,6 +655,84 @@ impl BorderManager {
 
         self.wm_info = wm_info;
         self.tracking_hwnd = tracking_hwnd;
+
+        Ok(())
+    }
+
+    fn handle_floating_borders(
+        &mut self,
+        ws: &Workspace,
+        monitor_idx: usize,
+        foreground_window: isize,
+        style: BorderStyle,
+        width: i32,
+        offset: i32,
+        kind_colours: WindowKindColours,
+        layer_changed: bool,
+        forced_update: bool,
+    ) -> color_eyre::Result<()> {
+        for window in ws.floating_windows() {
+            let mut new_border = false;
+            let id = window.hwnd.to_string();
+            let border = match self.borders.entry(id.clone()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    if let Ok(border) = Border::create(
+                        &window.hwnd.to_string(),
+                        window.hwnd,
+                        monitor_idx,
+                        style,
+                        width,
+                        offset,
+                        kind_colours,
+                    ) {
+                        new_border = true;
+                        entry.insert(border)
+                    } else {
+                        return Ok(());
+                    }
+                }
+            };
+
+            // Update border globals
+            border.style = style;
+            border.width = width;
+            border.offset = offset;
+
+            let last_focus_state = border.window_kind;
+
+            let new_focus_state = if foreground_window == window.hwnd {
+                WindowKind::Floating
+            } else {
+                WindowKind::Unfocused
+            };
+
+            border.window_kind = new_focus_state;
+
+            // Update the border's monitor idx in case it changed
+            border.monitor_idx = Some(monitor_idx);
+
+            let rect = WindowsApi::window_rect(window.hwnd)?;
+            border.window_rect = rect;
+
+            let should_invalidate = new_border
+                || (last_focus_state != new_focus_state)
+                || layer_changed
+                || forced_update;
+
+            if should_invalidate {
+                if forced_update && !new_border {
+                    // Update the border brushes if there was a forced update
+                    // and this is not a new border (new border's already have
+                    // their brushes updated on creation)
+                    border.update_brushes(kind_colours)?;
+                }
+                border.set_position(&rect, window.hwnd)?;
+                border.invalidate();
+            }
+
+            self.windows_borders.insert(window.hwnd, id);
+        }
 
         Ok(())
     }

@@ -476,7 +476,12 @@ impl WindowManager {
                                 }
                             }
 
-                            if !monocle_window_event && monocle_container.is_some() {
+                            let workspace = self.focused_workspace()?;
+                            if !(monocle_window_event
+                                || workspace.layer() != &WorkspaceLayer::Tiling)
+                                && monocle_container.is_some()
+                            {
+                                tracing::error!("HIDING WINDOW");
                                 window.hide();
                             }
                         }
