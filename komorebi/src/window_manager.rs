@@ -43,11 +43,11 @@ use crate::core::config_generation::MatchingRule;
 use crate::core::custom_layout::CustomLayout;
 
 use crate::CrossBoundaryBehaviour;
-use crate::KomorebiTheme;
 use crate::DATA_DIR;
 use crate::DEFAULT_CONTAINER_PADDING;
 use crate::DEFAULT_WORKSPACE_PADDING;
 use crate::HOME_DIR;
+use crate::KomorebiTheme;
 use crate::NO_TITLEBAR;
 use crate::REGEX_IDENTIFIERS;
 use crate::SUBSCRIPTION_SOCKETS;
@@ -61,8 +61,8 @@ use crate::monitor_reconciliator;
 use crate::ring::Ring;
 use crate::should_act;
 use crate::should_act_individual;
-use crate::state::State;
 use crate::stackbar_manager;
+use crate::state::State;
 use crate::static_config::StaticConfig;
 use crate::transparency_manager;
 use crate::window::Window;
@@ -1232,12 +1232,11 @@ impl WindowManager {
     /// Updates the `globals` field of workspace with index `workspace_idx` on monitor index
     /// `monitor_idx`
     pub fn update_workspace_globals(&mut self, monitor_idx: usize, workspace_idx: usize) {
-        if let Some(globals) = self.get_workspace_globals_for_monitor(monitor_idx) {
-            if let Some(monitor) = self.monitors_mut().get_mut(monitor_idx) {
-                if let Some(workspace) = monitor.workspaces_mut().get_mut(workspace_idx) {
-                    workspace.globals = globals;
-                }
-            }
+        if let Some(globals) = self.get_workspace_globals_for_monitor(monitor_idx)
+            && let Some(monitor) = self.monitors_mut().get_mut(monitor_idx)
+            && let Some(workspace) = monitor.workspaces_mut().get_mut(workspace_idx)
+        {
+            workspace.globals = globals;
         }
     }
 

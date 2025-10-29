@@ -1095,18 +1095,18 @@ mod tests {
         assert_eq!(wm.monitors().len(), 2, "Expected two monitors");
 
         // hmonitor
-        assert_eq!(wm.monitors()[0].id(), 1);
+        assert_eq!(wm.monitors()[0].id, 1);
 
         // device name
-        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY1"));
+        assert_eq!(wm.monitors()[0].name, String::from("DISPLAY1"));
 
         // Device
-        assert_eq!(wm.monitors()[0].device(), &String::from("ABC123"));
+        assert_eq!(wm.monitors()[0].device, String::from("ABC123"));
 
         // Device ID
         assert_eq!(
-            wm.monitors()[0].device_id(),
-            &String::from("ABC123-4&123456&0&UID0")
+            wm.monitors()[0].device_id,
+            String::from("ABC123-4&123456&0&UID0")
         );
 
         // Check monitor serial number id
@@ -1116,18 +1116,18 @@ mod tests {
         );
 
         // hmonitor
-        assert_eq!(wm.monitors()[1].id(), 2);
+        assert_eq!(wm.monitors()[1].id, 2);
 
         // device name
-        assert_eq!(wm.monitors()[1].name(), &String::from("DISPLAY2"));
+        assert_eq!(wm.monitors()[1].name, String::from("DISPLAY2"));
 
         // Device
-        assert_eq!(wm.monitors()[1].device(), &String::from("ABC123"));
+        assert_eq!(wm.monitors()[1].device, String::from("ABC123"));
 
         // Device ID
         assert_eq!(
-            wm.monitors()[1].device_id(),
-            &String::from("ABC123-4&123456&0&UID1")
+            wm.monitors()[1].device_id,
+            String::from("ABC123-4&123456&0&UID1")
         );
 
         // Check monitor serial number id
@@ -1150,18 +1150,18 @@ mod tests {
         assert_eq!(wm.monitors().len(), 1, "Expected two monitors");
 
         // hmonitor
-        assert_eq!(wm.monitors()[0].id(), 1);
+        assert_eq!(wm.monitors()[0].id, 1);
 
         // device name
-        assert_eq!(wm.monitors()[0].name(), &String::from("DISPLAY1"));
+        assert_eq!(wm.monitors()[0].name, String::from("DISPLAY1"));
 
         // Device
-        assert_eq!(wm.monitors()[0].device(), &String::from("ABC123"));
+        assert_eq!(wm.monitors()[0].device, String::from("ABC123"));
 
         // Device ID
         assert_eq!(
-            wm.monitors()[0].device_id(),
-            &String::from("ABC123-4&123456&0&UID0")
+            wm.monitors()[0].device_id,
+            String::from("ABC123-4&123456&0&UID0")
         );
 
         // Check monitor serial number id

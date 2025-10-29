@@ -658,6 +658,7 @@ impl BorderManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// Handles floating window's borders
     fn handle_floating_borders(
         &mut self,

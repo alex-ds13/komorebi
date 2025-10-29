@@ -301,58 +301,58 @@ pub trait WinApi {
         &self,
         callback: MONITORENUMPROC,
         callback_data_address: isize,
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
-    fn valid_hmonitors(&self) -> Result<Vec<(String, isize)>>;
+    fn valid_hmonitors(&self) -> eyre::Result<Vec<(String, isize)>>;
 
-    fn load_monitor_information(&self, wm: &mut WindowManager) -> Result<()>;
+    fn load_monitor_information(&self, wm: &mut WindowManager) -> eyre::Result<()>;
 
-    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> Result<()>;
+    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> eyre::Result<()>;
 
     fn load_workspace_information(
         &self,
         monitors: &mut Ring<Monitor>,
         known_hwnds: &HashMap<isize, (usize, usize)>,
         known_layered_hwnds: &[isize],
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
-    fn allow_set_foreground_window(&self, process_id: u32) -> Result<()>;
+    fn allow_set_foreground_window(&self, process_id: u32) -> eyre::Result<()>;
 
     fn monitor_from_window(&self, hwnd: isize) -> isize;
 
-    fn monitor_name_from_window(&self, hwnd: isize) -> Result<String>;
+    fn monitor_name_from_window(&self, hwnd: isize) -> eyre::Result<String>;
 
     fn monitor_from_point(&self, point: POINT) -> isize;
 
     /// position window resizes the target window to the given layout, adjusting
     /// the layout to account for any window shadow borders (the window painted
     /// region will match layout on completion).
-    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> Result<()>;
+    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> eyre::Result<()>;
 
-    fn bring_window_to_top(&self, hwnd: isize) -> Result<()>;
+    fn bring_window_to_top(&self, hwnd: isize) -> eyre::Result<()>;
 
     /// Raise the window to the top of the Z order, but do not activate or focus
     /// it. Use raise_and_focus_window to activate and focus a window.
-    fn raise_window(&self, hwnd: isize) -> Result<()>;
+    fn raise_window(&self, hwnd: isize) -> eyre::Result<()>;
 
     /// Lower the window to the bottom of the Z order, but do not activate or focus
     /// it.
-    fn lower_window(&self, hwnd: isize) -> Result<()>;
+    fn lower_window(&self, hwnd: isize) -> eyre::Result<()>;
 
-    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> Result<()>;
+    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> eyre::Result<()>;
 
     /// set_window_pos calls SetWindowPos without any accounting for Window decorations.
-    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> Result<()>;
+    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> eyre::Result<()>;
 
-    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> Result<()>;
+    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> eyre::Result<()>;
 
     fn show_window(&self, hwnd: isize, command: SHOW_WINDOW_CMD);
 
     fn minimize_window(&self, hwnd: isize);
 
-    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Result<()>;
+    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> eyre::Result<()>;
 
-    fn close_window(&self, hwnd: isize) -> Result<()>;
+    fn close_window(&self, hwnd: isize) -> eyre::Result<()>;
 
     fn hide_window(&self, hwnd: isize);
 
@@ -362,46 +362,46 @@ pub trait WinApi {
 
     fn maximize_window(&self, hwnd: isize);
 
-    fn foreground_window(&self) -> Result<isize>;
+    fn foreground_window(&self) -> eyre::Result<isize>;
 
-    fn raise_and_focus_window(&self, hwnd: isize) -> Result<()>;
-
-    #[allow(dead_code)]
-    fn top_window(&self) -> Result<isize>;
-
-    fn desktop_window(&self) -> Result<isize>;
+    fn raise_and_focus_window(&self, hwnd: isize) -> eyre::Result<()>;
 
     #[allow(dead_code)]
-    fn next_window(&self, hwnd: isize) -> Result<isize>;
+    fn top_window(&self) -> eyre::Result<isize>;
+
+    fn desktop_window(&self) -> eyre::Result<isize>;
 
     #[allow(dead_code)]
-    fn top_visible_window(&self) -> Result<isize>;
+    fn next_window(&self, hwnd: isize) -> eyre::Result<isize>;
 
-    fn window_rect(&self, hwnd: isize) -> Result<Rect>;
+    #[allow(dead_code)]
+    fn top_visible_window(&self) -> eyre::Result<isize>;
+
+    fn window_rect(&self, hwnd: isize) -> eyre::Result<Rect>;
 
     /// shadow_rect computes the offset of the shadow position of the window to
     /// the window painted region. The four values in the returned Rect can be
     /// added to a position rect to compute a size for set_window_pos that will
     /// fill the target area, ignoring shadows.
-    fn shadow_rect(&self, hwnd: HWND) -> Result<Rect>;
+    fn shadow_rect(&self, hwnd: HWND) -> eyre::Result<Rect>;
 
     fn round_rect(&self, hdc: HDC, rect: &Rect, border_radius: i32);
     fn rectangle(&self, hdc: HDC, rect: &Rect);
-    fn set_cursor_pos(&self, x: i32, y: i32) -> Result<()>;
+    fn set_cursor_pos(&self, x: i32, y: i32) -> eyre::Result<()>;
 
-    fn cursor_pos(&self) -> Result<POINT>;
+    fn cursor_pos(&self) -> eyre::Result<POINT>;
 
-    fn window_from_point(&self, point: POINT) -> Result<isize>;
+    fn window_from_point(&self, point: POINT) -> eyre::Result<isize>;
 
-    fn window_at_cursor_pos(&self) -> Result<isize>;
+    fn window_at_cursor_pos(&self) -> eyre::Result<isize>;
 
-    fn center_cursor_in_rect(&self, rect: &Rect) -> Result<()>;
+    fn center_cursor_in_rect(&self, rect: &Rect) -> eyre::Result<()>;
 
     fn window_thread_process_id(&self, hwnd: isize) -> (u32, u32);
 
     fn current_process_id(&self) -> u32;
 
-    fn process_id_to_session_id(&self) -> Result<u32>;
+    fn process_id_to_session_id(&self) -> eyre::Result<u32>;
 
     #[cfg(target_pointer_width = "64")]
     fn set_window_long_ptr_w(
@@ -409,7 +409,7 @@ pub trait WinApi {
         hwnd: HWND,
         index: WINDOW_LONG_PTR_INDEX,
         new_value: isize,
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
     #[cfg(target_pointer_width = "32")]
     fn set_window_long_ptr_w(
@@ -417,65 +417,65 @@ pub trait WinApi {
         hwnd: HWND,
         index: WINDOW_LONG_PTR_INDEX,
         new_value: i32,
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
     #[cfg(target_pointer_width = "64")]
-    fn gwl_style(&self, hwnd: isize) -> Result<isize>;
+    fn gwl_style(&self, hwnd: isize) -> eyre::Result<isize>;
 
     #[cfg(target_pointer_width = "32")]
-    fn gwl_style(&self, hwnd: isize) -> Result<i32>;
+    fn gwl_style(&self, hwnd: isize) -> eyre::Result<i32>;
 
     #[cfg(target_pointer_width = "64")]
-    fn gwl_ex_style(&self, hwnd: isize) -> Result<isize>;
+    fn gwl_ex_style(&self, hwnd: isize) -> eyre::Result<isize>;
 
     #[cfg(target_pointer_width = "32")]
-    fn gwl_ex_style(&self, hwnd: isize) -> Result<i32>;
+    fn gwl_ex_style(&self, hwnd: isize) -> eyre::Result<i32>;
 
     #[cfg(target_pointer_width = "64")]
-    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<isize>;
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> eyre::Result<isize>;
 
     #[cfg(target_pointer_width = "32")]
-    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<i32>;
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> eyre::Result<i32>;
 
     #[cfg(target_pointer_width = "64")]
-    fn update_style(&self, hwnd: isize, new_value: isize) -> Result<()>;
+    fn update_style(&self, hwnd: isize, new_value: isize) -> eyre::Result<()>;
 
     #[cfg(target_pointer_width = "32")]
-    fn update_style(&self, hwnd: isize, new_value: i32) -> Result<()>;
+    fn update_style(&self, hwnd: isize, new_value: i32) -> eyre::Result<()>;
 
     #[cfg(target_pointer_width = "64")]
-    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> Result<()>;
+    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> eyre::Result<()>;
 
     #[cfg(target_pointer_width = "32")]
-    fn update_ex_style(&self, hwnd: isize, new_value: i32) -> Result<()>;
+    fn update_ex_style(&self, hwnd: isize, new_value: i32) -> eyre::Result<()>;
 
-    fn window_text_w(&self, hwnd: isize) -> Result<String>;
+    fn window_text_w(&self, hwnd: isize) -> eyre::Result<String>;
 
     fn open_process(
         &self,
         access_rights: PROCESS_ACCESS_RIGHTS,
         inherit_handle: bool,
         process_id: u32,
-    ) -> Result<HANDLE>;
+    ) -> eyre::Result<HANDLE>;
 
-    fn close_process(&self, handle: HANDLE) -> Result<()>;
+    fn close_process(&self, handle: HANDLE) -> eyre::Result<()>;
 
-    fn process_handle(&self, process_id: u32) -> Result<HANDLE>;
+    fn process_handle(&self, process_id: u32) -> eyre::Result<HANDLE>;
 
-    fn exe_path(&self, handle: HANDLE) -> Result<String>;
+    fn exe_path(&self, handle: HANDLE) -> eyre::Result<String>;
 
-    fn exe(&self, handle: HANDLE) -> Result<String>;
+    fn exe(&self, handle: HANDLE) -> eyre::Result<String>;
 
-    fn real_window_class_w(&self, hwnd: isize) -> Result<String>;
+    fn real_window_class_w(&self, hwnd: isize) -> eyre::Result<String>;
 
     fn dwm_get_window_attribute<T>(
         &self,
         hwnd: isize,
         attribute: DWMWINDOWATTRIBUTE,
         value: &mut T,
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
-    fn is_window_cloaked(&self, hwnd: isize) -> Result<bool>;
+    fn is_window_cloaked(&self, hwnd: isize) -> eyre::Result<bool>;
 
     fn is_window(&self, hwnd: isize) -> bool;
 
@@ -485,11 +485,11 @@ pub trait WinApi {
 
     fn is_zoomed(&self, hwnd: isize) -> bool;
 
-    fn monitor_info_w(&self, hmonitor: HMONITOR) -> Result<MONITORINFOEXW>;
+    fn monitor_info_w(&self, hmonitor: HMONITOR) -> eyre::Result<MONITORINFOEXW>;
 
-    fn monitor(&self, hmonitor: isize) -> Result<Monitor>;
+    fn monitor(&self, hmonitor: isize) -> eyre::Result<Monitor>;
 
-    fn set_process_dpi_awareness_context(&self) -> Result<()>;
+    fn set_process_dpi_awareness_context(&self) -> eyre::Result<()>;
 
     #[allow(dead_code)]
     fn system_parameters_info_w(
@@ -498,46 +498,46 @@ pub trait WinApi {
         ui_param: u32,
         pv_param: *mut c_void,
         update_flags: SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    ) -> Result<()>;
+    ) -> eyre::Result<()>;
 
     // #[tracing::instrument]
-    fn foreground_lock_timeout(&self) -> Result<()>;
+    fn foreground_lock_timeout(&self) -> eyre::Result<()>;
 
     #[allow(dead_code)]
-    fn focus_follows_mouse(&self) -> Result<bool>;
+    fn focus_follows_mouse(&self) -> eyre::Result<bool>;
 
     #[allow(dead_code)]
-    fn enable_focus_follows_mouse(&self) -> Result<()>;
+    fn enable_focus_follows_mouse(&self) -> eyre::Result<()>;
 
     #[allow(dead_code)]
-    fn disable_focus_follows_mouse(&self) -> Result<()>;
+    fn disable_focus_follows_mouse(&self) -> eyre::Result<()>;
 
-    fn module_handle_w(&self) -> Result<HMODULE>;
+    fn module_handle_w(&self) -> eyre::Result<HMODULE>;
 
     fn create_solid_brush(&self, colour: u32) -> HBRUSH;
 
-    fn register_class_w(&self, window_class: &WNDCLASSW) -> Result<u16>;
+    fn register_class_w(&self, window_class: &WNDCLASSW) -> eyre::Result<u16>;
 
-    fn dpi_for_monitor(&self, hmonitor: isize) -> Result<f32>;
+    fn dpi_for_monitor(&self, hmonitor: isize) -> eyre::Result<f32>;
 
-    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> Result<bool>;
+    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> eyre::Result<bool>;
 
-    fn round_corners(&self, hwnd: isize) -> Result<()>;
+    fn round_corners(&self, hwnd: isize) -> eyre::Result<()>;
 
-    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> Result<()>;
+    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> eyre::Result<()>;
 
     fn create_border_window(
         &self,
         name: PCWSTR,
         instance: isize,
         border: *mut Border,
-    ) -> Result<isize>;
+    ) -> eyre::Result<isize>;
 
-    fn set_transparent(&self, hwnd: isize, alpha: u8) -> Result<()>;
+    fn set_transparent(&self, hwnd: isize, alpha: u8) -> eyre::Result<()>;
 
-    fn get_transparent(&self, hwnd: isize) -> Result<u8>;
+    fn get_transparent(&self, hwnd: isize) -> eyre::Result<u8>;
 
-    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> Result<isize>;
+    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> eyre::Result<isize>;
 
     fn register_power_setting_notification(
         &self,
@@ -561,7 +561,7 @@ pub trait WinApi {
 
     fn left_click(&self) -> u32;
 
-    fn wts_register_session_notification(&self, hwnd: isize) -> Result<()>;
+    fn wts_register_session_notification(&self, hwnd: isize) -> eyre::Result<()>;
 }
 
 impl WinApi for WindowsApiInternal<'_> {
@@ -569,19 +569,19 @@ impl WinApi for WindowsApiInternal<'_> {
         &self,
         callback: MONITORENUMPROC,
         callback_data_address: isize,
-    ) -> Result<()> {
+    ) -> eyre::Result<()> {
         todo!()
     }
 
-    fn valid_hmonitors(&self) -> Result<Vec<(String, isize)>> {
+    fn valid_hmonitors(&self) -> eyre::Result<Vec<(String, isize)>> {
         todo!()
     }
 
-    fn load_monitor_information(&self, wm: &mut WindowManager) -> Result<()> {
+    fn load_monitor_information(&self, wm: &mut WindowManager) -> eyre::Result<()> {
         todo!()
     }
 
-    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> Result<()> {
+    fn enum_windows(&self, callback: WNDENUMPROC, callback_data_address: isize) -> eyre::Result<()> {
         todo!()
     }
 
@@ -590,11 +590,11 @@ impl WinApi for WindowsApiInternal<'_> {
         monitors: &mut Ring<Monitor>,
         known_hwnds: &HashMap<isize, (usize, usize)>,
         known_layered_hwnds: &[isize],
-    ) -> Result<()> {
+    ) -> eyre::Result<()> {
         todo!()
     }
 
-    fn allow_set_foreground_window(&self, process_id: u32) -> Result<()> {
+    fn allow_set_foreground_window(&self, process_id: u32) -> eyre::Result<()> {
         todo!()
     }
 
@@ -602,7 +602,7 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn monitor_name_from_window(&self, hwnd: isize) -> Result<String> {
+    fn monitor_name_from_window(&self, hwnd: isize) -> eyre::Result<String> {
         todo!()
     }
 
@@ -610,31 +610,31 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> Result<()> {
+    fn position_window(&self, hwnd: isize, layout: &Rect, top: bool) -> eyre::Result<()> {
         todo!()
     }
 
-    fn bring_window_to_top(&self, hwnd: isize) -> Result<()> {
+    fn bring_window_to_top(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn raise_window(&self, hwnd: isize) -> Result<()> {
+    fn raise_window(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn lower_window(&self, hwnd: isize) -> Result<()> {
+    fn lower_window(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> Result<()> {
+    fn set_border_pos(&self, hwnd: isize, layout: &Rect, position: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> Result<()> {
+    fn set_window_pos(&self, hwnd: HWND, layout: &Rect, position: HWND, flags: u32) -> eyre::Result<()> {
         todo!()
     }
 
-    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> Result<()> {
+    fn move_window(&self, hwnd: isize, layout: &Rect, repaint: bool) -> eyre::Result<()> {
         todo!()
     }
 
@@ -646,11 +646,11 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Result<()> {
+    fn post_message(&self, hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> eyre::Result<()> {
         todo!()
     }
 
-    fn close_window(&self, hwnd: isize) -> Result<()> {
+    fn close_window(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
@@ -670,35 +670,35 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn foreground_window(&self) -> Result<isize> {
+    fn foreground_window(&self) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn raise_and_focus_window(&self, hwnd: isize) -> Result<()> {
+    fn raise_and_focus_window(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn top_window(&self) -> Result<isize> {
+    fn top_window(&self) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn desktop_window(&self) -> Result<isize> {
+    fn desktop_window(&self) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn next_window(&self, hwnd: isize) -> Result<isize> {
+    fn next_window(&self, hwnd: isize) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn top_visible_window(&self) -> Result<isize> {
+    fn top_visible_window(&self) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn window_rect(&self, hwnd: isize) -> Result<Rect> {
+    fn window_rect(&self, hwnd: isize) -> eyre::Result<Rect> {
         todo!()
     }
 
-    fn shadow_rect(&self, hwnd: HWND) -> Result<Rect> {
+    fn shadow_rect(&self, hwnd: HWND) -> eyre::Result<Rect> {
         todo!()
     }
 
@@ -710,23 +710,23 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn set_cursor_pos(&self, x: i32, y: i32) -> Result<()> {
+    fn set_cursor_pos(&self, x: i32, y: i32) -> eyre::Result<()> {
         todo!()
     }
 
-    fn cursor_pos(&self) -> Result<POINT> {
+    fn cursor_pos(&self) -> eyre::Result<POINT> {
         todo!()
     }
 
-    fn window_from_point(&self, point: POINT) -> Result<isize> {
+    fn window_from_point(&self, point: POINT) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn window_at_cursor_pos(&self) -> Result<isize> {
+    fn window_at_cursor_pos(&self) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn center_cursor_in_rect(&self, rect: &Rect) -> Result<()> {
+    fn center_cursor_in_rect(&self, rect: &Rect) -> eyre::Result<()> {
         todo!()
     }
 
@@ -738,7 +738,7 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn process_id_to_session_id(&self) -> Result<u32> {
+    fn process_id_to_session_id(&self) -> eyre::Result<u32> {
         todo!()
     }
 
@@ -747,31 +747,31 @@ impl WinApi for WindowsApiInternal<'_> {
         hwnd: HWND,
         index: WINDOW_LONG_PTR_INDEX,
         new_value: isize,
-    ) -> Result<()> {
+    ) -> eyre::Result<()> {
         todo!()
     }
 
-    fn gwl_style(&self, hwnd: isize) -> Result<isize> {
+    fn gwl_style(&self, hwnd: isize) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn gwl_ex_style(&self, hwnd: isize) -> Result<isize> {
+    fn gwl_ex_style(&self, hwnd: isize) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> Result<isize> {
+    fn window_long_ptr_w(&self, hwnd: HWND, index: WINDOW_LONG_PTR_INDEX) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn update_style(&self, hwnd: isize, new_value: isize) -> Result<()> {
+    fn update_style(&self, hwnd: isize, new_value: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> Result<()> {
+    fn update_ex_style(&self, hwnd: isize, new_value: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn window_text_w(&self, hwnd: isize) -> Result<String> {
+    fn window_text_w(&self, hwnd: isize) -> eyre::Result<String> {
         todo!()
     }
 
@@ -780,27 +780,27 @@ impl WinApi for WindowsApiInternal<'_> {
         access_rights: PROCESS_ACCESS_RIGHTS,
         inherit_handle: bool,
         process_id: u32,
-    ) -> Result<HANDLE> {
+    ) -> eyre::Result<HANDLE> {
         todo!()
     }
 
-    fn close_process(&self, handle: HANDLE) -> Result<()> {
+    fn close_process(&self, handle: HANDLE) -> eyre::Result<()> {
         todo!()
     }
 
-    fn process_handle(&self, process_id: u32) -> Result<HANDLE> {
+    fn process_handle(&self, process_id: u32) -> eyre::Result<HANDLE> {
         todo!()
     }
 
-    fn exe_path(&self, handle: HANDLE) -> Result<String> {
+    fn exe_path(&self, handle: HANDLE) -> eyre::Result<String> {
         todo!()
     }
 
-    fn exe(&self, handle: HANDLE) -> Result<String> {
+    fn exe(&self, handle: HANDLE) -> eyre::Result<String> {
         todo!()
     }
 
-    fn real_window_class_w(&self, hwnd: isize) -> Result<String> {
+    fn real_window_class_w(&self, hwnd: isize) -> eyre::Result<String> {
         todo!()
     }
 
@@ -809,11 +809,11 @@ impl WinApi for WindowsApiInternal<'_> {
         hwnd: isize,
         attribute: DWMWINDOWATTRIBUTE,
         value: &mut T,
-    ) -> Result<()> {
+    ) -> eyre::Result<()> {
         todo!()
     }
 
-    fn is_window_cloaked(&self, hwnd: isize) -> Result<bool> {
+    fn is_window_cloaked(&self, hwnd: isize) -> eyre::Result<bool> {
         todo!()
     }
 
@@ -833,15 +833,15 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn monitor_info_w(&self, hmonitor: HMONITOR) -> Result<MONITORINFOEXW> {
+    fn monitor_info_w(&self, hmonitor: HMONITOR) -> eyre::Result<MONITORINFOEXW> {
         todo!()
     }
 
-    fn monitor(&self, hmonitor: isize) -> Result<Monitor> {
+    fn monitor(&self, hmonitor: isize) -> eyre::Result<Monitor> {
         todo!()
     }
 
-    fn set_process_dpi_awareness_context(&self) -> Result<()> {
+    fn set_process_dpi_awareness_context(&self) -> eyre::Result<()> {
         todo!()
     }
 
@@ -851,27 +851,27 @@ impl WinApi for WindowsApiInternal<'_> {
         ui_param: u32,
         pv_param: *mut c_void,
         update_flags: SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    ) -> Result<()> {
+    ) -> eyre::Result<()> {
         todo!()
     }
 
-    fn foreground_lock_timeout(&self) -> Result<()> {
+    fn foreground_lock_timeout(&self) -> eyre::Result<()> {
         todo!()
     }
 
-    fn focus_follows_mouse(&self) -> Result<bool> {
+    fn focus_follows_mouse(&self) -> eyre::Result<bool> {
         todo!()
     }
 
-    fn enable_focus_follows_mouse(&self) -> Result<()> {
+    fn enable_focus_follows_mouse(&self) -> eyre::Result<()> {
         todo!()
     }
 
-    fn disable_focus_follows_mouse(&self) -> Result<()> {
+    fn disable_focus_follows_mouse(&self) -> eyre::Result<()> {
         todo!()
     }
 
-    fn module_handle_w(&self) -> Result<HMODULE> {
+    fn module_handle_w(&self) -> eyre::Result<HMODULE> {
         todo!()
     }
 
@@ -879,23 +879,23 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn register_class_w(&self, window_class: &WNDCLASSW) -> Result<u16> {
+    fn register_class_w(&self, window_class: &WNDCLASSW) -> eyre::Result<u16> {
         todo!()
     }
 
-    fn dpi_for_monitor(&self, hmonitor: isize) -> Result<f32> {
+    fn dpi_for_monitor(&self, hmonitor: isize) -> eyre::Result<f32> {
         todo!()
     }
 
-    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> Result<bool> {
+    fn monitors_have_same_dpi(&self, hmonitor_a: isize, hmonitor_b: isize) -> eyre::Result<bool> {
         todo!()
     }
 
-    fn round_corners(&self, hwnd: isize) -> Result<()> {
+    fn round_corners(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 
-    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> Result<()> {
+    fn set_window_accent(&self, hwnd: isize, color: Option<u32>) -> eyre::Result<()> {
         todo!()
     }
 
@@ -904,19 +904,19 @@ impl WinApi for WindowsApiInternal<'_> {
         name: PCWSTR,
         instance: isize,
         border: *mut Border,
-    ) -> Result<isize> {
+    ) -> eyre::Result<isize> {
         todo!()
     }
 
-    fn set_transparent(&self, hwnd: isize, alpha: u8) -> Result<()> {
+    fn set_transparent(&self, hwnd: isize, alpha: u8) -> eyre::Result<()> {
         todo!()
     }
 
-    fn get_transparent(&self, hwnd: isize) -> Result<u8> {
+    fn get_transparent(&self, hwnd: isize) -> eyre::Result<u8> {
         todo!()
     }
 
-    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> Result<isize> {
+    fn create_hidden_window(&self, name: PCWSTR, instance: isize) -> eyre::Result<isize> {
         todo!()
     }
 
@@ -954,7 +954,7 @@ impl WinApi for WindowsApiInternal<'_> {
         todo!()
     }
 
-    fn wts_register_session_notification(&self, hwnd: isize) -> Result<()> {
+    fn wts_register_session_notification(&self, hwnd: isize) -> eyre::Result<()> {
         todo!()
     }
 }
